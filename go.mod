@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/google/uuid v1.4.0
 	github.com/kamioair/qf v0.0.1
+	github.com/qiu-tec/easy-con.golang v0.0.8
 )
 
 require (
@@ -23,7 +24,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
-	github.com/qiu-tec/easy-con.golang v0.0.8 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
@@ -44,4 +44,4 @@ require (
 	gorm.io/gorm v1.25.12 // indirect
 )
 
-replace github.com/kamioair/qf => ../qf
+replace github.com/kamioair/qf => ../../qf

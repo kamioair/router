@@ -8,9 +8,9 @@ import (
 
 // Config 自定义配置
 var Config = struct {
-	DownMqtt qdefine.BrokerConfig
+	UpMqtt qdefine.BrokerConfig
 }{
-	DownMqtt: qdefine.BrokerConfig{
+	UpMqtt: qdefine.BrokerConfig{
 		Addr:    "",
 		UId:     "",
 		Pwd:     "",

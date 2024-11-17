@@ -27,3 +27,4 @@ go.sum
 
 # folder
 .idea/
+/output/config/*.yaml

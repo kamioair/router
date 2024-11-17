@@ -31,19 +31,21 @@ func onInit(moduleName string) {
 	config.Init(moduleName)
 
 	// 如果没生成客户端唯一码，重新生成并重置客户端
-	deviceCode, _ = blls.DeviceCode.LoadFromFile()
-	if deviceCode == "" {
-		code, err := refs.newDeviceCode()
+	devCode, _ := qservice.DeviceCode.LoadFromFile()
+	if devCode.IsEmpty() {
+
+		code, err := routeBll.NewCode(refs.newDeviceCode)
 		if err != nil {
 			panic(err)
 		}
+		devCode.Id = code
 		// 保存到文件
-		err = blls.DeviceCode.SaveToFile(code)
+		err = qservice.DeviceCode.SaveToFile(devCode)
 		if err != nil {
 			panic(err)
 		}
-		deviceCode = code
-		service.ResetClient(code)
+		deviceCode = devCode.Id
+		service.ResetClient(devCode.Id)
 	}
 
 	// 业务初始化
@@ -56,6 +58,8 @@ func onInit(moduleName string) {
 // 处理外部请求
 func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	switch route {
+	case "KnockDoor":
+		return refs.knockDoor(qconvert.ToAny[map[string]string](ctx.Raw()))
 	case "Request":
 		info := qconvert.ToAny[models.RouteInfo](ctx.Raw())
 		return routeBll.Req(info)
@@ -65,7 +69,16 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 
 // 处理外部通知
 func onNoticeHandler(route string, ctx qdefine.Context) {
+	switch route {
 
+	}
+}
+
+func onRetainNoticeHandler(route string, ctx qdefine.Context) {
+	switch route {
+	case "ClientModuleList":
+		routeBll.UploadClientModules(qconvert.ToAny[models.ServerInfo](ctx.Raw()))
+	}
 }
 
 // 发送通知

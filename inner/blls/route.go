@@ -13,29 +13,29 @@ import (
 )
 
 type Route struct {
-	name          string
-	devCode       string
-	downAdapter   easyCon.IAdapter
-	upRequestFunc qdefine.SendRequestHandler
+	name            string
+	devCode         string
+	upAdapter       easyCon.IAdapter
+	downRequestFunc qdefine.SendRequestHandler
 }
 
-func NewRouteBll(name, devCode string, upRequestFunc qdefine.SendRequestHandler) *Route {
+func NewRouteBll(name, devCode string, downRequestFunc qdefine.SendRequestHandler) *Route {
 	route := &Route{
-		name:          name,
-		devCode:       devCode,
-		upRequestFunc: upRequestFunc,
+		name:            name,
+		devCode:         devCode,
+		downRequestFunc: downRequestFunc,
 	}
 
-	// 如果配置了下级broker，则连接
-	if config.Config.DownMqtt.Addr != "" {
-		cfg := config.Config.DownMqtt
+	// 如果配置了上级broker，则连接
+	cfg := config.Config.UpMqtt
+	if cfg.Addr != "" {
 		setting := easyCon.NewSetting(fmt.Sprintf("%s.%s", name, devCode), cfg.Addr, route.onReq, route.onStatusChanged)
 		setting.UID = cfg.UId
 		setting.PWD = cfg.Pwd
 		setting.TimeOut = time.Duration(cfg.TimeOut) * time.Second
 		setting.ReTry = cfg.Retry
 		setting.LogMode = easyCon.ELogMode(cfg.LogMode)
-		route.downAdapter = easyCon.NewMqttAdapter(setting)
+		route.upAdapter = easyCon.NewMqttAdapter(setting)
 	}
 
 	return route
@@ -48,7 +48,7 @@ func (r *Route) Req(info models.RouteInfo) (any, error) {
 
 	// 非路由请求
 	if strings.Contains(info.Module, "/") == false {
-		rs, err := r.downRequest(info.Module, info.Route, info.Content)
+		rs, err := r.upRequest(info.Module, info.Route, info.Content)
 		if err != nil {
 			return nil, err
 		}
@@ -80,7 +80,7 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 		}
 		// 已经是最底层路由
 		if strings.Contains(newModule, "/") == false {
-			rs, err := r.downRequest(newModule, info.Route, info.Content)
+			rs, err := r.upRequest(newModule, info.Route, info.Content)
 			if err != nil {
 				return nil, err
 			}
@@ -90,14 +90,14 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 		newParams["Module"] = newModule
 		// 截取下级设备码
 		sp = strings.Split(newModule, "/")
-		rs, err := r.downRequest(fmt.Sprintf("%s.%s", r.name, sp[0]), "Request", newParams)
+		rs, err := r.downRequestFunc(fmt.Sprintf("%s.%s", r.name, sp[0]), "Request", newParams)
 		if err != nil {
 			return nil, err
 		}
 		return rs, nil
 	} else {
 		// 向上机路由请求
-		rs, err := r.upRequestFunc(r.name, "Request", newParams)
+		rs, err := r.upRequest(r.name, "Request", newParams)
 		if err != nil {
 			return nil, err
 		}
@@ -105,9 +105,9 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 	}
 }
 
-func (r *Route) downRequest(module, route string, content any) (any, error) {
-	if r.downAdapter != nil {
-		resp := r.downAdapter.Req(module, route, content)
+func (r *Route) upRequest(module, route string, content any) (any, error) {
+	if r.upAdapter != nil {
+		resp := r.upAdapter.Req(module, route, content)
 		if resp.RespCode == easyCon.ERespSuccess {
 			return resp.Content, nil
 		}
@@ -116,7 +116,7 @@ func (r *Route) downRequest(module, route string, content any) (any, error) {
 		}
 		return nil, errors.New(fmt.Sprintf("%d", resp.RespCode))
 	}
-	return r.upRequestFunc(module, route, content)
+	return r.downRequestFunc(module, route, content)
 }
 
 func (r *Route) onReq(pack easyCon.PackReq) (easyCon.EResp, any) {
@@ -136,4 +136,28 @@ func (r *Route) onReq(pack easyCon.PackReq) (easyCon.EResp, any) {
 
 func (r *Route) onStatusChanged(adapter easyCon.IAdapter, status easyCon.EStatus) {
 
+}
+
+func (r *Route) UploadClientModules(info models.ServerInfo) {
+	if r.devCode != info.DeviceCode || r.upAdapter == nil {
+		// 底层路由不用上传
+		return
+	}
+	r.upAdapter.Req("ClientManager", "UploadClientModules", info)
+}
+
+func (r *Route) NewCode(downNewCodeFunc func() (string, error)) (string, error) {
+	if r.upAdapter != nil {
+		// 桥接模式，问上级服务请求客户端
+		resp := r.upAdapter.Req("ClientManager", "NewDeviceCode", nil)
+		if resp.RespCode == easyCon.ERespSuccess {
+			return resp.Content.(string), nil
+		}
+		if resp.Error != "" {
+			return "", errors.New(resp.Error)
+		}
+		return "", errors.New(fmt.Sprintf("%d", resp.RespCode))
+	}
+	// 根级或者最底层，则直接问同级的服务请求
+	return downNewCodeFunc()
 }
