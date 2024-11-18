@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/kamioair/qf/qdefine"
+	"github.com/kamioair/qf/qservice"
 	easyCon "github.com/qiu-tec/easy-con.golang"
 	"router/inner/config"
 	"router/inner/models"
@@ -39,6 +40,13 @@ func NewRouteBll(name, devCode string, downRequestFunc qdefine.SendRequestHandle
 	}
 
 	return route
+}
+
+func (r *Route) Stop() {
+	if r.upAdapter != nil {
+		r.upAdapter.Stop()
+		r.upAdapter = nil
+	}
 }
 
 func (r *Route) Req(info models.RouteInfo) (any, error) {
@@ -143,13 +151,23 @@ func (r *Route) UploadClientModules(info models.ServerInfo) {
 		// 底层路由不用上传
 		return
 	}
-	r.upAdapter.Req("ClientManager", "UploadClientModules", info)
+
+	device, _ := qservice.DeviceCode.LoadFromFile()
+
+	up := map[string]any{}
+	up["Id"] = info.DeviceCode
+	up["Name"] = device.Name
+	up["Modules"] = info.Modules
+	r.upAdapter.Req("ClientManager", "KnockDoor", info)
 }
 
-func (r *Route) NewCode(downNewCodeFunc func() (string, error)) (string, error) {
+func (r *Route) NewCode(isRoot bool, downNewCodeFunc func() (string, error)) (string, error) {
 	if r.upAdapter != nil {
+		param := map[string]any{
+			"IsRoot": isRoot,
+		}
 		// 桥接模式，问上级服务请求客户端
-		resp := r.upAdapter.Req("ClientManager", "NewDeviceCode", nil)
+		resp := r.upAdapter.Req("ClientManager", "NewDeviceCode", param)
 		if resp.RespCode == easyCon.ERespSuccess {
 			return resp.Content.(string), nil
 		}

@@ -30,11 +30,14 @@ func onInit(moduleName string) {
 	// 配置初始化
 	config.Init(moduleName)
 
+	// 业务初始化
+	routeBll = blls.NewRouteBll(moduleName, deviceCode, service.SendRequest)
+
 	// 如果没生成客户端唯一码，重新生成并重置客户端
 	devCode, _ := qservice.DeviceCode.LoadFromFile()
 	if devCode.IsEmpty() {
 
-		code, err := routeBll.NewCode(refs.newDeviceCode)
+		code, err := routeBll.NewCode(service.IsRoot(), refs.newDeviceCode)
 		if err != nil {
 			panic(err)
 		}
@@ -45,11 +48,15 @@ func onInit(moduleName string) {
 			panic(err)
 		}
 		deviceCode = devCode.Id
-		service.ResetClient(devCode.Id)
-	}
 
-	// 业务初始化
-	routeBll = blls.NewRouteBll(moduleName, deviceCode, service.SendRequest)
+		// 使用设备码重启连接
+		service.ResetClient(devCode.Id)
+
+		// 业务重新初始化
+		routeBll.Stop()
+		routeBll = nil
+		routeBll = blls.NewRouteBll(moduleName, deviceCode, service.SendRequest)
+	}
 
 	// 输出设备码给启动器
 	fmt.Println("[DeviceCode]:", deviceCode)

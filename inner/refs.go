@@ -5,7 +5,10 @@ type refStruct struct{}
 var refs refStruct
 
 func (ref *refStruct) newDeviceCode() (string, error) {
-	ctx, err := service.SendRequest("ClientManager", "NewDeviceCode", nil)
+	param := map[string]any{
+		"IsRoot": service.IsRoot(),
+	}
+	ctx, err := service.SendRequest("ClientManager", "NewDeviceCode", param)
 	if err != nil {
 		return "", err
 	}
