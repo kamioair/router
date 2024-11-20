@@ -3,7 +3,7 @@ module router
 go 1.20
 
 require (
-	github.com/kamioair/qf v0.0.1
+	github.com/kamioair/qf v0.0.3
 	github.com/qiu-tec/easy-con.golang v0.0.8
 )
 
@@ -53,4 +53,4 @@ require (
 	gorm.io/gorm v1.25.12 // indirect
 )
 
-replace github.com/kamioair/qf => ../../qf
+//replace github.com/kamioair/qf => ../../qf
