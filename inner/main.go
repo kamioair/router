@@ -4,7 +4,6 @@ import (
 	"github.com/kamioair/qf/qdefine"
 	"github.com/kamioair/qf/qservice"
 	"router/inner/config"
-	"strings"
 )
 
 func main() {
@@ -17,21 +16,16 @@ func main() {
 	// 配置初始化
 	config.Init(setting.Module)
 
-	// 防止冲突，如果没有请求到客户端ID时，先随机生成一个
+	// 注册设备ID
 	id := ""
 	code, err := qservice.DeviceCode.LoadFromFile()
 	if err != nil {
+		// 当前客户端尚未请求ID，先随机生成一个，防止冲突
 		id = qdefine.NewUUID()
 	} else {
 		id = code.Id
 	}
-	switch strings.ToLower(config.Config.Mode) {
-	// 顶级模式和服务端模式，不用附加ID，因为有且只有一个
-	case "root", "server":
-		setting.SetDeviceCode("[none]" + id)
-	default:
-		setting.SetDeviceCode(id)
-	}
+	setting.SetDeviceCode(id)
 
 	// 启动微服务
 	service = qservice.NewService(setting)

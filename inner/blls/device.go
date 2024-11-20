@@ -16,19 +16,18 @@ type Device struct {
 	UpKnockDoorFunc func(info models.DeviceInfo)
 }
 
-func NewDeviceBll(devId string) *Device {
+func NewDeviceBll() *Device {
 	dev := &Device{
-		lock:  &sync.RWMutex{},
-		devId: devId,
+		lock: &sync.RWMutex{},
 	}
 	return dev
 }
 
-func (d *Device) NewDeviceId() (any, error) {
+func (d *Device) NewDeviceId(devId string) (any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	find, err := daos.DeviceDao.GetCondition("code = ?", "IID")
+	find, err := daos.DeviceDao.GetCondition("code = ?", "id")
 	if err != nil {
 		return "", err
 	}
@@ -46,6 +45,9 @@ func (d *Device) NewDeviceId() (any, error) {
 	}
 
 	// 格式化客户端ID并返回
+	if d.devId == "root" {
+		return find.Name, nil
+	}
 	return d.devId + "-" + find.Name, nil
 }
 
@@ -53,15 +55,11 @@ func (d *Device) KnockDoor(info models.DeviceInfo) (any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	parent := info.Parent
-	if parent == "" {
-		parent = d.devId
-	}
-
 	find := &daos.Device{}
-	if strings.HasPrefix(info.Id, "[none]") {
-		find, _ = daos.DeviceDao.GetCondition("code = ?", "LocalId")
-		find.Name = strings.Replace(info.Id, "[none]", "", 1)
+	if info.Parent == "" {
+		find, _ = daos.DeviceDao.GetCondition("code = ?", "local")
+		find.Name = info.Id
+		find.Modules = d.addModules(find.Modules, info.Modules)
 	} else {
 		// 查找
 		find, _ = daos.DeviceDao.GetCondition("code = ?", info.Id)
@@ -70,13 +68,13 @@ func (d *Device) KnockDoor(info models.DeviceInfo) (any, error) {
 			find = &daos.Device{
 				Code:    info.Id,
 				Name:    info.Name,
-				Parent:  parent,
+				Parent:  info.Parent,
 				Modules: d.addModules("", info.Modules),
 			}
 		} else {
 			// 更新
 			find.Name = info.Name
-			find.Parent = parent
+			find.Parent = info.Parent
 			find.Modules = d.addModules(find.Modules, info.Modules)
 		}
 	}
@@ -88,8 +86,7 @@ func (d *Device) KnockDoor(info models.DeviceInfo) (any, error) {
 	}
 
 	// 如果有则向上继续敲门
-	info.Parent = parent
-	d.UpKnockDoorFunc(info)
+	d.upKnockDoorFunc(info)
 
 	return true, nil
 }
@@ -115,4 +112,21 @@ func (d *Device) addModules(oldModulesStr string, newModules []models.ModuleInfo
 	}
 	js, _ := json.Marshal(finalModules)
 	return string(js)
+}
+
+func (d *Device) upKnockDoorFunc(info models.DeviceInfo) {
+	parent := ""
+	sp := strings.Split(info.Id, ".")
+	if len(sp) > 1 {
+		parent = strings.Join(sp[:len(sp)-1], ".")
+	} else {
+		parent = "root"
+	}
+	newInfo := models.DeviceInfo{
+		Id:      info.Id,
+		Name:    info.Name,
+		Parent:  parent,
+		Modules: info.Modules,
+	}
+	d.UpKnockDoorFunc(newInfo)
 }

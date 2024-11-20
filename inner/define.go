@@ -31,21 +31,24 @@ func onInit(moduleName string) {
 	daos.Init(moduleName)
 
 	// 业务初始化
-	routeBll = blls.NewRouteBll(moduleName, service.SendRequest, service.ResetClient)
-	deviceBll = blls.NewDeviceBll(routeBll.DeviceInfo.Id)
-
-	// 绑定事件
+	routeBll = blls.NewRouteBll(moduleName)
+	routeBll.DownRequestFunc = service.SendRequest
+	routeBll.ResetClientFunc = service.ResetClient
+	deviceBll = blls.NewDeviceBll()
 	deviceBll.UpKnockDoorFunc = routeBll.KnockDoor
 
+	// 启动
+	routeBll.Start()
+
 	// 输出信息
-	fmt.Printf("[DeviceInfo]:%s^%s", routeBll.DeviceInfo.Id, routeBll.DeviceInfo.Name)
+	fmt.Printf("[DeviceInfo]:%s^%s", routeBll.GetDevId(), routeBll.GetDevName())
 }
 
 // 处理外部请求
 func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	switch route {
 	case "NewDeviceId":
-		return deviceBll.NewDeviceId()
+		return deviceBll.NewDeviceId(routeBll.GetDevId())
 	case "KnockDoor":
 		info := qconvert.ToAny[models.DeviceInfo](ctx.Raw())
 		return deviceBll.KnockDoor(info)

@@ -15,26 +15,33 @@ import (
 
 type Route struct {
 	name            string
-	DeviceInfo      qdefine.DeviceInfo
 	upAdapter       easyCon.IAdapter
-	downRequestFunc qdefine.SendRequestHandler
-	resetClientFunc func(devCode string)
+	deviceInfo      qdefine.DeviceInfo
+	DownRequestFunc qdefine.SendRequestHandler
+	ResetClientFunc func(devCode string)
 }
 
-func NewRouteBll(name string, downRequestFunc qdefine.SendRequestHandler, resetClientFunc func(devCode string)) *Route {
+func NewRouteBll(name string) *Route {
 	route := &Route{
-		name:            name,
-		downRequestFunc: downRequestFunc,
-		resetClientFunc: resetClientFunc,
+		name: name,
 	}
+	return route
+}
 
+func (r *Route) Start() {
 	// 获取本机设备信息
-	route.getDeviceInfo()
+	r.loadDeviceInfo()
 
 	// 如果配置了上级路由，则连接
-	route.initUpAdapter(route.DeviceInfo.Id)
+	r.initUpAdapter(r.deviceInfo.Id)
+}
 
-	return route
+func (r *Route) GetDevId() string {
+	return r.deviceInfo.Id
+}
+
+func (r *Route) GetDevName() string {
+	return r.deviceInfo.Name
 }
 
 func (r *Route) KnockDoor(info models.DeviceInfo) {
@@ -44,11 +51,11 @@ func (r *Route) KnockDoor(info models.DeviceInfo) {
 	_ = r.upAdapter.Req(r.name, "KnockDoor", info)
 }
 
-func (r *Route) getDeviceInfo() {
+func (r *Route) loadDeviceInfo() {
 	// 先从本地文件获取
 	device, err := qservice.DeviceCode.LoadFromFile()
 	if err == nil {
-		r.DeviceInfo = device
+		r.deviceInfo = device
 		return
 	}
 
@@ -78,15 +85,13 @@ func (r *Route) getDeviceInfo() {
 
 	default:
 		// 客户端模式，向服务端路由请求
-		ctx, err := r.downRequestFunc(r.name, "NewDeviceId", nil)
+		ctx, err := r.DownRequestFunc(r.name, "NewDeviceId", nil)
 		if err != nil {
 			panic(err)
 		}
 		device = qdefine.DeviceInfo{
 			Id: ctx.Raw().(string),
 		}
-		// 使用新的客户端ID重启模块
-		r.resetClientFunc(device.Id)
 	}
 
 	// 保存文件
@@ -95,7 +100,10 @@ func (r *Route) getDeviceInfo() {
 		panic(err)
 	}
 
-	r.DeviceInfo = device
+	// 使用新的客户端ID重启模块
+	r.ResetClientFunc(device.Id)
+
+	r.deviceInfo = device
 }
 
 func (r *Route) initUpAdapter(devCode string) {
@@ -108,6 +116,7 @@ func (r *Route) initUpAdapter(devCode string) {
 		setting.ReTry = cfg.Retry
 		setting.LogMode = easyCon.ELogMode(cfg.LogMode)
 		r.upAdapter = easyCon.NewMqttAdapter(setting)
+		time.Sleep(time.Second * 1)
 	}
 }
 
@@ -141,7 +150,7 @@ func (r *Route) upRequestFunc(module, route string, content any) (any, error) {
 		}
 		return nil, errors.New(fmt.Sprintf("%d", resp.RespCode))
 	}
-	return r.downRequestFunc(module, route, content)
+	return r.DownRequestFunc(module, route, content)
 }
 
 func (r *Route) Req(info models.RouteInfo) (any, error) {
@@ -171,7 +180,7 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 	// 拆分路由
 	sp := strings.Split(info.Module, "/")
 
-	devCode := r.DeviceInfo.Id
+	devCode := r.deviceInfo.Id
 
 	// 如果是当前设备或者是根
 	if sp[0] == devCode || devCode == "" {
@@ -195,7 +204,7 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 		newParams["Module"] = newModule
 		// 截取下级设备码
 		sp = strings.Split(newModule, "/")
-		rs, err := r.downRequestFunc(fmt.Sprintf("Route.%s", sp[0]), "Request", newParams)
+		rs, err := r.DownRequestFunc(fmt.Sprintf("Route.%s", sp[0]), "Request", newParams)
 		if err != nil {
 			return nil, err
 		}
