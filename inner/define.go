@@ -55,6 +55,9 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	case "Request":
 		info := qconvert.ToAny[models.RouteInfo](ctx.Raw())
 		return routeBll.Req(info)
+	case "Ping":
+		fmt.Println("[Ping]:", "OK")
+		return true, nil
 	}
 	return nil, errors.New("route Not Matched")
 }
