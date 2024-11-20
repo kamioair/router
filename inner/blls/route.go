@@ -85,6 +85,8 @@ func (r *Route) getDeviceInfo() {
 		device = qdefine.DeviceInfo{
 			Id: ctx.Raw().(string),
 		}
+		// 使用新的客户端ID重启模块
+		r.resetClientFunc(device.Id)
 	}
 
 	// 保存文件
@@ -92,9 +94,6 @@ func (r *Route) getDeviceInfo() {
 	if err != nil {
 		panic(err)
 	}
-
-	// 使用新的客户端ID重启模块
-	r.resetClientFunc(device.Id)
 
 	r.DeviceInfo = device
 }

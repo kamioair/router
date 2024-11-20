@@ -18,16 +18,19 @@ func main() {
 	config.Init(setting.Module)
 
 	// 防止冲突，如果没有请求到客户端ID时，先随机生成一个
+	id := ""
 	code, err := qservice.DeviceCode.LoadFromFile()
 	if err != nil {
-		code.Id = qdefine.NewUUID()
+		id = qdefine.NewUUID()
+	} else {
+		id = code.Id
 	}
 	switch strings.ToLower(config.Config.Mode) {
 	// 顶级模式和服务端模式，不用附加ID，因为有且只有一个
 	case "root", "server":
-		setting.SetDeviceCode("[none]" + code.Id)
+		setting.SetDeviceCode("[none]" + id)
 	default:
-		setting.SetDeviceCode(code.Id)
+		setting.SetDeviceCode(id)
 	}
 
 	// 启动微服务

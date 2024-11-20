@@ -17,9 +17,9 @@ var Config = struct {
 		Addr:    "",
 		UId:     "",
 		Pwd:     "",
-		LogMode: "",
-		TimeOut: 0,
-		Retry:   0,
+		LogMode: "NONE",
+		TimeOut: 3000,
+		Retry:   3,
 	},
 	StartId: 1000,
 }

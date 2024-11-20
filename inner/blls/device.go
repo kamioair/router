@@ -6,6 +6,7 @@ import (
 	"router/inner/daos"
 	"router/inner/models"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -27,7 +28,7 @@ func (d *Device) NewDeviceId() (any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	find, err := daos.DeviceDao.GetCondition("code = IID")
+	find, err := daos.DeviceDao.GetCondition("code = ?", "IID")
 	if err != nil {
 		return "", err
 	}
@@ -57,21 +58,27 @@ func (d *Device) KnockDoor(info models.DeviceInfo) (any, error) {
 		parent = d.devId
 	}
 
-	// 查找
-	find, _ := daos.DeviceDao.GetCondition("code = ?", info.Id)
-	if find == nil {
-		// 不存在则新建
-		find = &daos.Device{
-			Code:    info.Id,
-			Name:    info.Name,
-			Parent:  parent,
-			Modules: d.addModules("", info.Modules),
-		}
+	find := &daos.Device{}
+	if strings.HasPrefix(info.Id, "[none]") {
+		find, _ = daos.DeviceDao.GetCondition("code = ?", "LocalId")
+		find.Name = strings.Replace(info.Id, "[none]", "", 1)
 	} else {
-		// 更新
-		find.Name = info.Name
-		find.Parent = parent
-		find.Modules = d.addModules(find.Modules, info.Modules)
+		// 查找
+		find, _ = daos.DeviceDao.GetCondition("code = ?", info.Id)
+		if find == nil {
+			// 不存在则新建
+			find = &daos.Device{
+				Code:    info.Id,
+				Name:    info.Name,
+				Parent:  parent,
+				Modules: d.addModules("", info.Modules),
+			}
+		} else {
+			// 更新
+			find.Name = info.Name
+			find.Parent = parent
+			find.Modules = d.addModules(find.Modules, info.Modules)
+		}
 	}
 
 	// 更新数据库
