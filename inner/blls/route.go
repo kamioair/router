@@ -200,6 +200,13 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 		}
 		// 已经是最底层路由
 		if strings.Contains(newModule, "/") == false {
+			// 如果是客户端，则补上ID，反之去掉
+			if newModule == "Route" {
+				ssp := strings.Split(devCode, "_")
+				if len(ssp) > 1 {
+					newModule = fmt.Sprintf("Route.%s", devCode)
+				}
+			}
 			rs, err := r.upRequestFunc(newModule, info.Route, info.Content)
 			if err != nil {
 				return nil, err

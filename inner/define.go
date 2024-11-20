@@ -7,6 +7,7 @@ import (
 	"github.com/kamioair/qf/qservice"
 	"github.com/kamioair/qf/utils/qconvert"
 	"router/inner/blls"
+	"router/inner/config"
 	"router/inner/daos"
 	"router/inner/models"
 )
@@ -28,7 +29,9 @@ var (
 // 初始化
 func onInit(moduleName string) {
 	// 数据库初始化
-	daos.Init(moduleName)
+	if config.Config.Mode != "client" {
+		daos.Init(moduleName)
+	}
 
 	// 业务初始化
 	routeBll = blls.NewRouteBll(moduleName)
@@ -52,6 +55,8 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	case "KnockDoor":
 		info := qconvert.ToAny[models.DeviceInfo](ctx.Raw())
 		return deviceBll.KnockDoor(info)
+	case "DeviceList":
+		return deviceBll.GetDeviceList()
 	case "Request":
 		info := qconvert.ToAny[models.RouteInfo](ctx.Raw())
 		return routeBll.Req(info)

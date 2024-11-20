@@ -2,6 +2,7 @@ package blls
 
 import (
 	"encoding/json"
+	"github.com/kamioair/qf/qservice"
 	"router/inner/config"
 	"router/inner/daos"
 	"router/inner/models"
@@ -128,4 +129,49 @@ func (d *Device) upKnockDoorFunc(info models.DeviceInfo) {
 		Modules: info.Modules,
 	}
 	d.UpKnockDoorFunc(newInfo)
+}
+
+func (d *Device) GetDeviceList() ([]models.DeviceInfo, error) {
+	if daos.DeviceDao == nil {
+		return nil, nil
+	}
+
+	// 获取全部列表
+	list, err := daos.DeviceDao.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
+	devInfo, _ := qservice.DeviceCode.LoadFromFile()
+
+	okList := make([]models.DeviceInfo, 0)
+	for _, m := range list {
+		if m.Code == "id" {
+			continue
+		}
+
+		modules := make([]models.ModuleInfo, 0)
+		_ = json.Unmarshal([]byte(m.Modules), &modules)
+
+		var dev models.DeviceInfo
+		if m.Code == "local" {
+			dev = models.DeviceInfo{
+				Id:      m.Name,
+				Name:    devInfo.Name,
+				Parent:  m.Parent,
+				Modules: modules,
+			}
+		} else {
+			dev = models.DeviceInfo{
+				Id:      m.Code,
+				Name:    m.Name,
+				Parent:  m.Parent,
+				Modules: modules,
+			}
+		}
+
+		okList = append(okList, dev)
+	}
+
+	return okList, nil
 }
