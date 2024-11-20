@@ -18,7 +18,7 @@ func Init(module string) {
 	DeviceDao = qdefine.NewDao[Device](db)
 	// 写入两条固定记录
 	if DeviceDao.GetCount() == 0 {
-		_ = DeviceDao.Create(&Device{Code: "IID", Name: strconv.Itoa(config.Config.StartId)})
-		_ = DeviceDao.Create(&Device{Code: "LocalId"})
+		_ = DeviceDao.Create(&Device{Code: "id", Name: strconv.Itoa(config.Config.StartId)})
+		_ = DeviceDao.Create(&Device{Code: "local"})
 	}
 }

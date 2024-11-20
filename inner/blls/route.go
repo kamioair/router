@@ -73,8 +73,10 @@ func (r *Route) loadDeviceInfo() {
 			Id: ctx.(string),
 		}
 		// 得到客户端ID后，关闭临时连接
-		r.upAdapter.Stop()
-		r.upAdapter = nil
+		if r.upAdapter != nil {
+			r.upAdapter.Stop()
+			r.upAdapter = nil
+		}
 
 	case "root": // 根级模式
 		// 固定ID
@@ -150,7 +152,11 @@ func (r *Route) upRequestFunc(module, route string, content any) (any, error) {
 		}
 		return nil, errors.New(fmt.Sprintf("%d", resp.RespCode))
 	}
-	return r.DownRequestFunc(module, route, content)
+	ctx, err := r.DownRequestFunc(module, route, content)
+	if err != nil {
+		return nil, err
+	}
+	return ctx.Raw(), nil
 }
 
 func (r *Route) Req(info models.RouteInfo) (any, error) {

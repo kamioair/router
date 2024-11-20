@@ -12,7 +12,6 @@ import (
 
 type Device struct {
 	lock            *sync.RWMutex
-	devId           string
 	UpKnockDoorFunc func(info models.DeviceInfo)
 }
 
@@ -45,10 +44,10 @@ func (d *Device) NewDeviceId(devId string) (any, error) {
 	}
 
 	// 格式化客户端ID并返回
-	if d.devId == "root" {
+	if devId == "root" || devId == "" {
 		return find.Name, nil
 	}
-	return d.devId + "-" + find.Name, nil
+	return devId + "_" + find.Name, nil
 }
 
 func (d *Device) KnockDoor(info models.DeviceInfo) (any, error) {
@@ -116,9 +115,9 @@ func (d *Device) addModules(oldModulesStr string, newModules []models.ModuleInfo
 
 func (d *Device) upKnockDoorFunc(info models.DeviceInfo) {
 	parent := ""
-	sp := strings.Split(info.Id, ".")
+	sp := strings.Split(info.Id, "_")
 	if len(sp) > 1 {
-		parent = strings.Join(sp[:len(sp)-1], ".")
+		parent = strings.Join(sp[:len(sp)-1], "_")
 	} else {
 		parent = "root"
 	}

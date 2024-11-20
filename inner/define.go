@@ -41,7 +41,7 @@ func onInit(moduleName string) {
 	routeBll.Start()
 
 	// 输出信息
-	fmt.Printf("[DeviceInfo]:%s^%s", routeBll.GetDevId(), routeBll.GetDevName())
+	fmt.Printf("[DeviceInfo]:%s^%s\n", routeBll.GetDevId(), routeBll.GetDevName())
 }
 
 // 处理外部请求
