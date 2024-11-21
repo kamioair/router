@@ -53,4 +53,4 @@ require (
 	gorm.io/gorm v1.25.12 // indirect
 )
 
-//replace github.com/kamioair/qf => ../../qf
+replace github.com/kamioair/qf => ../../qf

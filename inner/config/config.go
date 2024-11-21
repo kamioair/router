@@ -12,7 +12,7 @@ var Config = struct {
 	UpMqtt  qdefine.BrokerConfig // 上级Broker配置
 	StartId int
 }{
-	Mode: "",
+	Mode: "client",
 	UpMqtt: qdefine.BrokerConfig{
 		Addr:    "",
 		UId:     "",

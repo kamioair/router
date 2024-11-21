@@ -189,7 +189,7 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 	devCode := r.deviceInfo.Id
 
 	// 如果是当前设备或者是根
-	if sp[0] == devCode || devCode == "" {
+	if sp[0] == devCode || devCode == "root" || devCode == "" {
 		newModule := ""
 		if devCode == "" {
 			// 根不用去
