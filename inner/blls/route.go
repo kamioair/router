@@ -206,12 +206,14 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 				if len(ssp) > 1 {
 					newModule = fmt.Sprintf("Route.%s", devCode)
 				}
+			} else {
+				newModule = fmt.Sprintf("%s.%s", newModule, devCode)
 			}
-			rs, err := r.upRequestFunc(newModule, info.Route, info.Content)
+			rs, err := r.DownRequestFunc(newModule, info.Route, info.Content)
 			if err != nil {
 				return nil, err
 			}
-			return rs, nil
+			return rs.Raw(), nil
 		}
 		// 未到底层，继续向下级路由请求
 		newParams["Module"] = newModule
@@ -221,7 +223,7 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return rs, nil
+		return rs.Raw(), nil
 	} else {
 		// 向上机路由请求
 		rs, err := r.upRequestFunc(r.name, "Request", newParams)

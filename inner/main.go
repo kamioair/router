@@ -11,7 +11,7 @@ func main() {
 		BindInitFunc(onInit).
 		BindReqFunc(onReqHandler).
 		BindNoticeFunc(onNoticeHandler).
-		BindRetainNoticeFunc(onRetainNoticeHandler)
+		BindStatusFunc(onStatusHandler)
 
 	// 配置初始化
 	config.Init(setting.Module)

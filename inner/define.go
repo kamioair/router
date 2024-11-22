@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	Version   = "V1.0.0" // 版本
-	DefModule = "Route"  // 模块名称
-	DefDesc   = "路由模块"   // 模块描述
+	Version   = "V1.0.0"   // 版本
+	DefModule = "Route"    // 模块名称
+	DefDesc   = "路由模块" // 模块描述
 )
 
 var (
@@ -74,9 +74,9 @@ func onNoticeHandler(route string, ctx qdefine.Context) {
 	}
 }
 
-func onRetainNoticeHandler(route string, ctx qdefine.Context) {
-	switch route {
-
+func onStatusHandler(route string, ctx qdefine.Context) {
+	if route == "StatusInputRetain" {
+		ctx.
 	}
 }
 
