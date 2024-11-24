@@ -175,3 +175,34 @@ func (d *Device) GetDeviceList() ([]models.DeviceInfo, error) {
 
 	return okList, nil
 }
+
+func (d *Device) GetModuleList(devCode string) (map[string]string, error) {
+	finals := map[string]string{}
+
+	// 先查找服务器的所有模块
+	local, err := daos.DeviceDao.GetCondition("code = ?", "local")
+	if err != nil {
+		return finals, err
+	}
+	devInfo, _ := qservice.DeviceCode.LoadFromFile()
+	modules := make([]models.ModuleInfo, 0)
+	_ = json.Unmarshal([]byte(local.Modules), &modules)
+	for _, m := range modules {
+		finals[m.Name] = devInfo.Id
+	}
+
+	// 再查找指定设备的模块
+	if devCode != "" {
+		device, err := daos.DeviceDao.GetCondition("code = ?", devCode)
+		if err != nil {
+			return finals, err
+		}
+		modules := make([]models.ModuleInfo, 0)
+		_ = json.Unmarshal([]byte(device.Modules), &modules)
+		for _, m := range modules {
+			finals[m.Name] = device.Code
+		}
+	}
+
+	return finals, nil
+}

@@ -60,32 +60,34 @@ func (r *Route) loadDeviceInfo() {
 	}
 
 	// 本地没有，则上上级路由请求
-	switch strings.ToLower(config.Config.Mode) {
+	switch config.Config.Mode {
 
-	case "server": // 服务器模式
-		// 创建临时连接，并问上级路由模块请求
-		r.initUpAdapter(qdefine.NewUUID())
-		ctx, err := r.upRequestFunc(r.name, "NewDeviceId", nil)
-		if err != nil {
-			panic(err)
-		}
-		device = qdefine.DeviceInfo{
-			Id: ctx.(string),
-		}
-		// 得到客户端ID后，关闭临时连接
-		if r.upAdapter != nil {
-			r.upAdapter.Stop()
-			r.upAdapter = nil
+	case config.ERouteServer:
+		if r.upAdapter == nil {
+			// 根级服务模式，固定ID
+			device = qdefine.DeviceInfo{
+				Id:   "root",
+				Name: "Root Server",
+			}
+		} else {
+			// 普通服务器模式
+			// 创建临时连接，并问上级路由模块请求
+			r.initUpAdapter(qdefine.NewUUID())
+			ctx, err := r.upRequestFunc(r.name, "NewDeviceId", nil)
+			if err != nil {
+				panic(err)
+			}
+			device = qdefine.DeviceInfo{
+				Id: ctx.(string),
+			}
+			// 得到客户端ID后，关闭临时连接
+			if r.upAdapter != nil {
+				r.upAdapter.Stop()
+				r.upAdapter = nil
+			}
 		}
 
-	case "root": // 根级模式
-		// 固定ID
-		device = qdefine.DeviceInfo{
-			Id:   "root",
-			Name: "Root Server",
-		}
-
-	default:
+	case config.ERouteClient:
 		// 客户端模式，向服务端路由请求
 		ctx, err := r.DownRequestFunc(r.name, "NewDeviceId", nil)
 		if err != nil {
@@ -94,6 +96,8 @@ func (r *Route) loadDeviceInfo() {
 		device = qdefine.DeviceInfo{
 			Id: ctx.Raw().(string),
 		}
+		// 使用新的客户端ID重启模块
+		r.ResetClientFunc(device.Id)
 	}
 
 	// 保存文件
@@ -101,9 +105,6 @@ func (r *Route) loadDeviceInfo() {
 	if err != nil {
 		panic(err)
 	}
-
-	// 使用新的客户端ID重启模块
-	r.ResetClientFunc(device.Id)
 
 	r.deviceInfo = device
 }

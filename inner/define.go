@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	Version   = "V1.0.0"   // 版本
-	DefModule = "Route"    // 模块名称
-	DefDesc   = "路由模块" // 模块描述
+	Version   = "V1.0.0" // 版本
+	DefModule = "Route"  // 模块名称
+	DefDesc   = "路由模块"   // 模块描述
 )
 
 var (
@@ -29,7 +29,8 @@ var (
 // 初始化
 func onInit(moduleName string) {
 	// 数据库初始化
-	if config.Config.Mode != "client" {
+	if config.Config.Mode == config.ERouteServer {
+		// 添加设备登记数据库
 		daos.Init(moduleName)
 	}
 
@@ -55,6 +56,8 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	case "KnockDoor":
 		info := qconvert.ToAny[models.DeviceInfo](ctx.Raw())
 		return deviceBll.KnockDoor(info)
+	case "ModuleList":
+		return deviceBll.GetModuleList(ctx.Raw().(string))
 	case "DeviceList":
 		return deviceBll.GetDeviceList()
 	case "Request":
@@ -75,9 +78,9 @@ func onNoticeHandler(route string, ctx qdefine.Context) {
 }
 
 func onStatusHandler(route string, ctx qdefine.Context) {
-	if route == "StatusInputRetain" {
-		ctx.
-	}
+	//if route == "StatusInputRetain" {
+	//	ctx.
+	//}
 }
 
 // 发送通知

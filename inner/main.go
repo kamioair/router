@@ -18,14 +18,16 @@ func main() {
 
 	// 注册设备ID
 	id := ""
-	code, err := qservice.DeviceCode.LoadFromFile()
-	if err != nil {
-		// 当前客户端尚未请求ID，先随机生成一个，防止冲突
-		id = qdefine.NewUUID()
-	} else {
-		id = code.Id
+	if config.Config.Mode != config.ERouteServer {
+		code, err := qservice.DeviceCode.LoadFromFile()
+		if err != nil {
+			// 当前客户端尚未请求ID，先随机生成一个，防止冲突
+			id = qdefine.NewUUID()
+		} else {
+			id = code.Id
+		}
+		setting.SetDeviceCode(id)
 	}
-	setting.SetDeviceCode(id)
 
 	// 启动微服务
 	service = qservice.NewService(setting)
