@@ -3,8 +3,6 @@ package daos
 import (
 	"github.com/kamioair/qf/qdefine"
 	"github.com/kamioair/qf/utils/qdb"
-	"router/inner/config"
-	"strconv"
 )
 
 var (
@@ -18,7 +16,6 @@ func Init(module string) {
 	DeviceDao = qdefine.NewDao[Device](db)
 	// 写入两条固定记录
 	if DeviceDao.GetCount() == 0 {
-		_ = DeviceDao.Create(&Device{Code: "id", Name: strconv.Itoa(config.Config.StartId)})
 		_ = DeviceDao.Create(&Device{Code: "local"})
 	}
 }

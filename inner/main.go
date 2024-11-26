@@ -17,16 +17,16 @@ func main() {
 	config.Init(setting.Module)
 
 	// 注册设备ID
-	id := ""
-	if config.Config.Mode != config.ERouteServer {
-		code, err := qservice.DeviceCode.LoadFromFile()
-		if err != nil {
-			// 当前客户端尚未请求ID，先随机生成一个，防止冲突
-			id = qdefine.NewUUID()
+	code, err := qservice.DeviceCode.LoadFromFile()
+	if err != nil {
+		// 当前客户端尚未请求ID，先随机生成一个，防止冲突
+		setting.SetDeviceCode(qdefine.NewUUID()+"[TEMP]", true)
+	} else {
+		if config.Config.Mode == config.ERouteServer {
+			setting.SetDeviceCode(code.Id, false)
 		} else {
-			id = code.Id
+			setting.SetDeviceCode(code.Id, true)
 		}
-		setting.SetDeviceCode(id)
 	}
 
 	// 启动微服务

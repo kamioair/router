@@ -2,61 +2,46 @@ package blls
 
 import (
 	"encoding/json"
+	"github.com/google/uuid"
 	"github.com/kamioair/qf/qservice"
-	"router/inner/config"
 	"router/inner/daos"
 	"router/inner/models"
-	"strconv"
-	"strings"
 	"sync"
 )
 
 type Device struct {
-	lock            *sync.RWMutex
 	UpKnockDoorFunc func(info models.DeviceInfo)
+	lock            *sync.RWMutex
+	localCaches     models.DeviceInfo
+	deviceCaches    map[string]models.DeviceInfo
 }
 
 func NewDeviceBll() *Device {
 	dev := &Device{
-		lock: &sync.RWMutex{},
+		lock:         &sync.RWMutex{},
+		deviceCaches: make(map[string]models.DeviceInfo),
 	}
+
 	return dev
 }
 
-func (d *Device) NewDeviceId(devId string) (any, error) {
+func (d *Device) NewDeviceId() (any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	find, err := daos.DeviceDao.GetCondition("code = ?", "id")
-	if err != nil {
-		return "", err
-	}
-	id, err := strconv.Atoi(find.Name)
-	if err != nil {
-		id = config.Config.StartId
-	}
-	id++
+	// 生成一个新的ID
+	newId := uuid.NewString()
 
-	// 更新数据库
-	find.Name = strconv.Itoa(id)
-	err = daos.DeviceDao.Save(find)
-	if err != nil {
-		return "", err
-	}
-
-	// 格式化客户端ID并返回
-	if devId == "root" || devId == "" {
-		return find.Name, nil
-	}
-	return devId + "_" + find.Name, nil
+	// 返回新的ID
+	return newId, nil
 }
 
-func (d *Device) KnockDoor(info models.DeviceInfo) (any, error) {
+func (d *Device) KnockDoor(info models.DeviceInfo, devId string) (any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
 	find := &daos.Device{}
-	if info.Parent == "" {
+	if info.Parent == "" || info.Parent == devId {
 		find, _ = daos.DeviceDao.GetCondition("code = ?", "local")
 		find.Name = info.Id
 		find.Modules = d.addModules(find.Modules, info.Modules)
@@ -78,6 +63,8 @@ func (d *Device) KnockDoor(info models.DeviceInfo) (any, error) {
 			find.Modules = d.addModules(find.Modules, info.Modules)
 		}
 	}
+
+	d.deviceCaches[info.Id] = info
 
 	// 更新数据库
 	err := daos.DeviceDao.Save(find)
@@ -115,17 +102,10 @@ func (d *Device) addModules(oldModulesStr string, newModules []models.ModuleInfo
 }
 
 func (d *Device) upKnockDoorFunc(info models.DeviceInfo) {
-	parent := ""
-	sp := strings.Split(info.Id, "_")
-	if len(sp) > 1 {
-		parent = strings.Join(sp[:len(sp)-1], "_")
-	} else {
-		parent = "root"
-	}
 	newInfo := models.DeviceInfo{
 		Id:      info.Id,
 		Name:    info.Name,
-		Parent:  parent,
+		Parent:  info.Parent,
 		Modules: info.Modules,
 	}
 	d.UpKnockDoorFunc(newInfo)

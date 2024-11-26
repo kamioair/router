@@ -22,8 +22,9 @@ var (
 	service *qservice.MicroService
 
 	// 其他业务
-	deviceBll *blls.Device
-	routeBll  *blls.Route
+	deviceBll  *blls.Device
+	routeBll   *blls.Route
+	monitorBll *blls.Monitor
 )
 
 // 初始化
@@ -40,9 +41,11 @@ func onInit(moduleName string) {
 	routeBll.ResetClientFunc = service.ResetClient
 	deviceBll = blls.NewDeviceBll()
 	deviceBll.UpKnockDoorFunc = routeBll.KnockDoor
+	monitorBll = blls.NewMonitorBll()
 
 	// 启动
 	routeBll.Start()
+	monitorBll.Start()
 
 	// 输出信息
 	fmt.Printf("[DeviceInfo]:%s^%s\n", routeBll.GetDevId(), routeBll.GetDevName())
@@ -51,11 +54,20 @@ func onInit(moduleName string) {
 // 处理外部请求
 func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	switch route {
-	case "NewDeviceId":
-		return deviceBll.NewDeviceId(routeBll.GetDevId())
-	case "KnockDoor":
+
+	case "NewDeviceId": // 由下级路由模块请求，生成一个新的设备ID
+		return deviceBll.NewDeviceId()
+
+	case "ServerDevId": // 由下级模块请求，获取服务器的设备ID
+		return routeBll.GetDevId(), nil
+
+	case "KnockDoor": // 由下级模块请求，敲门
 		info := qconvert.ToAny[models.DeviceInfo](ctx.Raw())
-		return deviceBll.KnockDoor(info)
+		return deviceBll.KnockDoor(info, routeBll.GetDevId())
+
+	case "Heart":
+	case "ErrorLog":
+
 	case "ModuleList":
 		return deviceBll.GetModuleList(ctx.Raw().(string))
 	case "DeviceList":

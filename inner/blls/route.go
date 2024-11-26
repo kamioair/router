@@ -18,7 +18,7 @@ type Route struct {
 	upAdapter       easyCon.IAdapter
 	deviceInfo      qdefine.DeviceInfo
 	DownRequestFunc qdefine.SendRequestHandler
-	ResetClientFunc func(devCode string)
+	ResetClientFunc func(devCode string, isAddModuleSuffix bool)
 }
 
 func NewRouteBll(name string) *Route {
@@ -48,7 +48,42 @@ func (r *Route) KnockDoor(info models.DeviceInfo) {
 	if r.upAdapter == nil {
 		return
 	}
+	// 问上级路由要父级ID
+	resp := r.upAdapter.Req(r.name, "ServerDevId", nil)
+	if resp.RespCode == easyCon.ERespSuccess {
+		info.Parent = resp.Content.(string)
+	}
 	_ = r.upAdapter.Req(r.name, "KnockDoor", info)
+}
+
+func (r *Route) Req(info models.RouteInfo) (any, error) {
+	if info.Module == "" {
+		return nil, errors.New("moduleName is nil")
+	}
+
+	// 非路由请求
+	if strings.Contains(info.Module, "/") == false {
+		rs, err := r.upRequestFunc(info.Module, info.Route, info.Content)
+		if err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+
+	// 路由请求
+	return r.routeRequest(info)
+}
+
+func (r *Route) UploadError() {
+	go func() {
+		if r.upAdapter != nil {
+			// 如果有上级Broker的路由，则往上级报
+			r.upAdapter.Req(r.name, "UploadError", nil)
+		} else {
+			// 反之往本级Broker的路由上报
+			r.DownRequestFunc("Route", "UploadError", nil)
+		}
+	}()
 }
 
 func (r *Route) loadDeviceInfo() {
@@ -59,11 +94,12 @@ func (r *Route) loadDeviceInfo() {
 		return
 	}
 
+	isAddModuleSuffix := false
+
 	// 本地没有，则上上级路由请求
 	switch config.Config.Mode {
-
 	case config.ERouteServer:
-		if r.upAdapter == nil {
+		if config.Config.UpMqtt.Addr == "" {
 			// 根级服务模式，固定ID
 			device = qdefine.DeviceInfo{
 				Id:   "root",
@@ -86,7 +122,6 @@ func (r *Route) loadDeviceInfo() {
 				r.upAdapter = nil
 			}
 		}
-
 	case config.ERouteClient:
 		// 客户端模式，向服务端路由请求
 		ctx, err := r.DownRequestFunc(r.name, "NewDeviceId", nil)
@@ -96,8 +131,7 @@ func (r *Route) loadDeviceInfo() {
 		device = qdefine.DeviceInfo{
 			Id: ctx.Raw().(string),
 		}
-		// 使用新的客户端ID重启模块
-		r.ResetClientFunc(device.Id)
+		isAddModuleSuffix = true
 	}
 
 	// 保存文件
@@ -107,6 +141,9 @@ func (r *Route) loadDeviceInfo() {
 	}
 
 	r.deviceInfo = device
+
+	// 使用新的客户端ID重启模块
+	r.ResetClientFunc(device.Id, isAddModuleSuffix)
 }
 
 func (r *Route) initUpAdapter(devCode string) {
@@ -158,24 +195,6 @@ func (r *Route) upRequestFunc(module, route string, content any) (any, error) {
 		return nil, err
 	}
 	return ctx.Raw(), nil
-}
-
-func (r *Route) Req(info models.RouteInfo) (any, error) {
-	if info.Module == "" {
-		return nil, errors.New("moduleName is nil")
-	}
-
-	// 非路由请求
-	if strings.Contains(info.Module, "/") == false {
-		rs, err := r.upRequestFunc(info.Module, info.Route, info.Content)
-		if err != nil {
-			return nil, err
-		}
-		return rs, nil
-	}
-
-	// 路由请求
-	return r.routeRequest(info)
 }
 
 func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
