@@ -107,7 +107,7 @@ func (d *Device) upKnockDoorFunc(info models.DeviceInfo) {
 	newInfo := models.DeviceInfo{
 		Id:      info.Id,
 		Name:    info.Name,
-		Parent:  "",
+		Parent:  info.Parent,
 		Modules: info.Modules,
 	}
 	d.UpKnockDoorFunc(newInfo)

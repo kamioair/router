@@ -51,9 +51,11 @@ func (r *Route) KnockDoor(info models.DeviceInfo) {
 		return
 	}
 	// 问上级路由要父级ID
-	resp := r.upAdapter.Req(r.name, "ServerDevId", nil)
-	if resp.RespCode == easyCon.ERespSuccess {
-		info.Parent = resp.Content.(string)
+	if info.Parent == info.Id {
+		resp := r.upAdapter.Req(r.name, "ServerDevId", nil)
+		if resp.RespCode == easyCon.ERespSuccess {
+			info.Parent = resp.Content.(string)
+		}
 	}
 	_ = r.upAdapter.Req(r.name, "KnockDoor", info)
 }
@@ -76,7 +78,7 @@ func (r *Route) Req(info models.RouteInfo) (any, error) {
 	return r.routeRequest(info)
 }
 
-func (r *Route) SendDeviceState(content string) {
+func (r *Route) SendDeviceState(content any) {
 	// 根级路由不用在上报
 	if config.Config.Mode == config.ERouteServer && config.Config.UpMqtt.Addr == "" {
 		return

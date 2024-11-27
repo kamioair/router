@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/kamioair/qf/utils/qconvert"
+	"router/inner/config"
 	"strings"
 	"sync"
 	"time"
@@ -14,9 +15,9 @@ type Alarm struct {
 	lastAlarm   string                // 上次上报的内容，用于比较是否需要上传
 	deviceState map[string]deviceInfo // 设备的完整状态
 	uploadState map[string]uploadInfo // 上传状态内容
-	uploadChan  chan string
+	uploadChan  chan any
 
-	SendDeviceState func(content string)
+	SendDeviceState func(content any)
 	OnNotice        func(route string, content any)
 }
 
@@ -43,7 +44,7 @@ func NewAlarmBll() *Alarm {
 		lock:        &sync.RWMutex{},
 		deviceState: map[string]deviceInfo{},
 		uploadState: map[string]uploadInfo{},
-		uploadChan:  make(chan string),
+		uploadChan:  make(chan any),
 		lastAlarm:   "{}",
 	}
 	return a
@@ -209,8 +210,7 @@ func (a *Alarm) checkLoop() {
 				a.setUploadAlarms(key, "Process", len(processAlarm) > 0, string(processStr))
 			}
 
-			str, _ := json.Marshal(a.uploadState)
-			a.uploadChan <- string(str)
+			a.uploadChan <- a.uploadState
 		}
 	}
 }
@@ -232,10 +232,17 @@ func (a *Alarm) uploadLoop() {
 	for true {
 		select {
 		case content := <-a.uploadChan:
+			str, _ := json.Marshal(a.uploadState)
 			// 如果和上次上报的不一致才进行上报
-			if a.lastAlarm != content {
-				a.lastAlarm = content
-				a.SendDeviceState(content)
+			if a.lastAlarm != string(str) {
+				a.lastAlarm = string(str)
+				if config.Config.Mode == config.ERouteServer && config.Config.UpMqtt.Addr == "" {
+					// 根级别服务，则直接发送通知
+					a.OnNotice("RouteDeviceAlarm", content)
+				} else {
+					// 向连接的Broker上报
+					a.SendDeviceState(content)
+				}
 			}
 		}
 	}
