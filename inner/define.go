@@ -42,16 +42,20 @@ func onInit(moduleName string) {
 	routeBll.ResetClientFunc = service.ResetClient
 	deviceBll = blls.NewDeviceBll()
 	deviceBll.UpKnockDoorFunc = routeBll.KnockDoor
-	monitorBll = blls.NewMonitorBll()
 	alarmBll = blls.NewAlarmBll()
 	alarmBll.SendDeviceState = routeBll.SendDeviceState
 	alarmBll.OnNotice = onNotice
 	deviceBll.GetAlarmsFunc = alarmBll.GetAlarms
+	monitorBll = blls.NewMonitorBll()
+	monitorBll.AddAlarmCpu = alarmBll.AddAlarmCpu
+	monitorBll.AddAlarmMem = alarmBll.AddAlarmMemory
+	monitorBll.AddAlarmDisk = alarmBll.AddAlarmDisk
+	monitorBll.AddAlarmProcess = alarmBll.AddAlarmProcess
 
 	// 启动
 	routeBll.Start()
 	monitorBll.Start()
-	alarmBll.Start()
+	alarmBll.Start(routeBll.GetDevId())
 
 	// 输出信息
 	fmt.Printf("[DeviceInfo]:%s^%s\n", routeBll.GetDevId(), routeBll.GetDevName())

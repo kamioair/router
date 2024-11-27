@@ -14,13 +14,11 @@ var Config = struct {
 }{
 	Mode: ERouteClient,
 	Monitor: MonitorConfig{
-		Cron: "0/10 * * * * ?",
-		CpuAlarm: CpuAlarm{
-			Value:    10,
-			Duration: 30,
-		},
+		Cron:      "0/10 * * * * ?",
+		CpuAlarm:  90,
 		MemAlarm:  90,
 		DiskAlarm: 90,
+		Duration:  30,
 		DiskPaths: []string{},
 		Processes: []string{},
 	},
@@ -36,16 +34,12 @@ var Config = struct {
 
 type MonitorConfig struct {
 	Cron      string   // 检测间隔
-	CpuAlarm  CpuAlarm // CPU报警值
-	MemAlarm  int      // 内存报警值
-	DiskAlarm int      // 硬盘报警值
+	CpuAlarm  float64  // CPU报警值
+	MemAlarm  float64  // 内存报警值
+	DiskAlarm float64  // 硬盘报警值
+	Duration  float64  // 达到报警值的持续时间
 	DiskPaths []string // 需要检测的硬盘分区，不填写默认检测（客户端：系统所在分区/ 服务端：所有分区）
 	Processes []string // 需要监控存活的进程名称
-}
-
-type CpuAlarm struct {
-	Value    float64
-	Duration float64
 }
 
 type ERouteMode string

@@ -16,6 +16,7 @@ type Alarm struct {
 	deviceState map[string]deviceInfo // 设备的完整状态
 	uploadState map[string]uploadInfo // 上传状态内容
 	uploadChan  chan any
+	devId       string
 
 	SendDeviceState func(content any)
 	OnNotice        func(route string, content any)
@@ -50,7 +51,8 @@ func NewAlarmBll() *Alarm {
 	return a
 }
 
-func (a *Alarm) Start() {
+func (a *Alarm) Start(devId string) {
+	a.devId = devId
 	go a.checkLoop()
 	go a.uploadLoop()
 }
@@ -108,46 +110,46 @@ func (a *Alarm) AddError(key string, title, err string) {
 	a.deviceState[sp[0]] = device
 }
 
-func (a *Alarm) AddAlarmCpu(devCode string, alarm bool) {
+func (a *Alarm) AddAlarmCpu(alarm bool) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	device := a.deviceState[devCode]
+	device := a.deviceState[a.devId]
 	device.Cpu = alarm
-	a.deviceState[devCode] = device
+	a.deviceState[a.devId] = device
 }
 
-func (a *Alarm) AddAlarmMemory(devCode string, alarm bool) {
+func (a *Alarm) AddAlarmMemory(alarm bool) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	device := a.deviceState[devCode]
+	device := a.deviceState[a.devId]
 	device.Memory = alarm
-	a.deviceState[devCode] = device
+	a.deviceState[a.devId] = device
 }
 
-func (a *Alarm) AddAlarmDisk(devCode string, alarm map[string]bool) {
+func (a *Alarm) AddAlarmDisk(alarm map[string]bool) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	device := a.deviceState[devCode]
+	device := a.deviceState[a.devId]
 	device.Disk = map[string]bool{}
 	for k, v := range alarm {
 		device.Disk[k] = v
 	}
-	a.deviceState[devCode] = device
+	a.deviceState[a.devId] = device
 }
 
-func (a *Alarm) AddAlarmProcess(devCode string, actives map[string]bool) {
+func (a *Alarm) AddAlarmProcess(actives map[string]bool) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	device := a.deviceState[devCode]
+	device := a.deviceState[a.devId]
 	device.Process = map[string]bool{}
 	for k, v := range actives {
 		device.Process[k] = v
 	}
-	a.deviceState[devCode] = device
+	a.deviceState[a.devId] = device
 }
 
 func (a *Alarm) AddDeviceState(raw any) {
@@ -189,11 +191,11 @@ func (a *Alarm) checkLoop() {
 				}
 				// 检测硬件是否有故障
 				key := fmt.Sprintf("%s.%s", id, "Route")
-				a.setUploadAlarms(key, "Cpu", info.Cpu == false, "alarm")
-				a.setUploadAlarms(key, "Memory", info.Memory == false, "alarm")
+				a.setUploadAlarms(key, "Cpu", info.Cpu == true, "alarm")
+				a.setUploadAlarms(key, "Memory", info.Memory == true, "alarm")
 				diskAlarm := make([]string, 0)
 				for k, v := range info.Disk {
-					if v == false {
+					if v == true {
 						diskAlarm = append(diskAlarm, fmt.Sprintf("%s:%s", strings.Trim(k, ":"), "alarm"))
 					}
 				}
