@@ -25,6 +25,7 @@ var (
 	deviceBll  *blls.Device
 	routeBll   *blls.Route
 	monitorBll *blls.Monitor
+	alarmBll   *blls.Alarm
 )
 
 // 初始化
@@ -42,10 +43,15 @@ func onInit(moduleName string) {
 	deviceBll = blls.NewDeviceBll()
 	deviceBll.UpKnockDoorFunc = routeBll.KnockDoor
 	monitorBll = blls.NewMonitorBll()
+	alarmBll = blls.NewAlarmBll()
+	alarmBll.SendDeviceState = routeBll.SendDeviceState
+	alarmBll.OnNotice = onNotice
+	deviceBll.GetAlarmsFunc = alarmBll.GetAlarms
 
 	// 启动
 	routeBll.Start()
 	monitorBll.Start()
+	alarmBll.Start()
 
 	// 输出信息
 	fmt.Printf("[DeviceInfo]:%s^%s\n", routeBll.GetDevId(), routeBll.GetDevName())
@@ -66,10 +72,23 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 		return deviceBll.KnockDoor(info, routeBll.GetDevId())
 
 	case "Heart":
+		alarmBll.AddHeart(ctx.Raw().(string))
+		return true, nil
+
 	case "ErrorLog":
+		devId := ctx.GetString("id")
+		title := ctx.GetString("title")
+		err := fmt.Sprintf("%s: %s", ctx.GetString("time"), ctx.GetString("error"))
+		alarmBll.AddError(devId, title, err)
+		return true, nil
+
+	case "UploadDeviceState":
+		alarmBll.AddDeviceState(ctx.Raw())
+		return true, nil
 
 	case "ModuleList":
-		return deviceBll.GetModuleList(ctx.Raw().(string))
+		devices := qconvert.ToAny[[]string](ctx.Raw())
+		return deviceBll.GetModuleList(devices)
 	case "DeviceList":
 		return deviceBll.GetDeviceList()
 	case "Request":

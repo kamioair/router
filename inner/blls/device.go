@@ -6,6 +6,7 @@ import (
 	"github.com/kamioair/qf/qservice"
 	"router/inner/daos"
 	"router/inner/models"
+	"strings"
 	"sync"
 )
 
@@ -14,6 +15,7 @@ type Device struct {
 	lock            *sync.RWMutex
 	localCaches     models.DeviceInfo
 	deviceCaches    map[string]models.DeviceInfo
+	GetAlarmsFunc   func() map[string]map[string]string
 }
 
 func NewDeviceBll() *Device {
@@ -41,7 +43,7 @@ func (d *Device) KnockDoor(info models.DeviceInfo, devId string) (any, error) {
 	defer d.lock.Unlock()
 
 	find := &daos.Device{}
-	if info.Parent == "" || info.Parent == devId {
+	if info.Parent == "" || info.Id == devId {
 		find, _ = daos.DeviceDao.GetCondition("code = ?", "local")
 		find.Name = info.Id
 		find.Modules = d.addModules(find.Modules, info.Modules)
@@ -105,7 +107,7 @@ func (d *Device) upKnockDoorFunc(info models.DeviceInfo) {
 	newInfo := models.DeviceInfo{
 		Id:      info.Id,
 		Name:    info.Name,
-		Parent:  info.Parent,
+		Parent:  "",
 		Modules: info.Modules,
 	}
 	d.UpKnockDoorFunc(newInfo)
@@ -150,37 +152,49 @@ func (d *Device) GetDeviceList() ([]models.DeviceInfo, error) {
 			}
 		}
 
+		for k, v := range d.GetAlarmsFunc() {
+			sp := strings.Split(k, ".")
+			if sp[0] != dev.Id {
+				continue
+			}
+			dev.Alarms = v
+		}
+
 		okList = append(okList, dev)
 	}
 
 	return okList, nil
 }
 
-func (d *Device) GetModuleList(devCode string) (map[string]string, error) {
+func (d *Device) GetModuleList(devCodes []string) (map[string]string, error) {
 	finals := map[string]string{}
 
 	// 先查找服务器的所有模块
-	local, err := daos.DeviceDao.GetCondition("code = ?", "local")
-	if err != nil {
-		return finals, err
-	}
-	devInfo, _ := qservice.DeviceCode.LoadFromFile()
-	modules := make([]models.ModuleInfo, 0)
-	_ = json.Unmarshal([]byte(local.Modules), &modules)
-	for _, m := range modules {
-		finals[m.Name] = devInfo.Id
-	}
-
-	// 再查找指定设备的模块
-	if devCode != "" {
-		device, err := daos.DeviceDao.GetCondition("code = ?", devCode)
-		if err != nil {
-			return finals, err
-		}
-		modules := make([]models.ModuleInfo, 0)
-		_ = json.Unmarshal([]byte(device.Modules), &modules)
-		for _, m := range modules {
-			finals[m.Name] = device.Code
+	for _, devCode := range devCodes {
+		if devCode == "local" {
+			local, err := daos.DeviceDao.GetCondition("code = ?", devCode)
+			if err != nil {
+				return finals, err
+			}
+			devInfo, _ := qservice.DeviceCode.LoadFromFile()
+			modules := make([]models.ModuleInfo, 0)
+			_ = json.Unmarshal([]byte(local.Modules), &modules)
+			for _, m := range modules {
+				finals[m.Name] = devInfo.Id
+			}
+		} else {
+			// 再查找指定设备的模块
+			device, err := daos.DeviceDao.GetCondition("code = ?", devCode)
+			if err != nil {
+				return finals, err
+			}
+			if device != nil {
+				modules := make([]models.ModuleInfo, 0)
+				_ = json.Unmarshal([]byte(device.Modules), &modules)
+				for _, m := range modules {
+					finals[m.Name] = device.Code
+				}
+			}
 		}
 	}
 

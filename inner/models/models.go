@@ -5,6 +5,7 @@ type DeviceInfo struct {
 	Name    string       // 设备名称
 	Parent  string       // 父级名称
 	Modules []ModuleInfo // 包含的模块列表
+	Alarms  map[string]string
 }
 
 type ModuleInfo struct {
