@@ -163,7 +163,36 @@ func (d *Device) GetDeviceList() ([]models.DeviceInfo, error) {
 		okList = append(okList, dev)
 	}
 
+	deviceMap := buildDeviceMap(okList)
+	for i := range okList {
+		okList[i].RouteUrl = buildFullPath(deviceMap, &okList[i])
+	}
+
 	return okList, nil
+}
+
+func buildDeviceMap(devices []models.DeviceInfo) map[string]*models.DeviceInfo {
+	deviceMap := make(map[string]*models.DeviceInfo)
+	for i := range devices {
+		deviceMap[devices[i].Id] = &devices[i]
+	}
+	return deviceMap
+}
+
+func buildFullPath(deviceMap map[string]*models.DeviceInfo, device *models.DeviceInfo) string {
+	// 如果没有父节点，直接返回当前节点的Id
+	if device.Parent == "" {
+		return device.Id
+	}
+
+	// 递归获取父节点的完整路径
+	parentNode, exists := deviceMap[device.Parent]
+	if exists {
+		return buildFullPath(deviceMap, parentNode) + "/" + device.Id
+	}
+
+	// 如果找不到父节点，返回当前节点的Id
+	return device.Id
 }
 
 func (d *Device) GetModuleList(devCodes []string) (map[string]string, error) {

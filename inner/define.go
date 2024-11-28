@@ -90,10 +90,14 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 		alarmBll.AddDeviceState(ctx.Raw())
 		return true, nil
 
+	case "GetDeviceStateDetail":
+		return alarmBll.GetDeviceStateDetail()
+
 	case "ModuleList":
 		devices := qconvert.ToAny[[]string](ctx.Raw())
 		return deviceBll.GetModuleList(devices)
 	case "DeviceList":
+		fmt.Println("【DeviceList】")
 		return deviceBll.GetDeviceList()
 	case "Request":
 		info := qconvert.ToAny[models.RouteInfo](ctx.Raw())

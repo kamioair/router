@@ -3,8 +3,10 @@ package blls
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/kamioair/qf/qservice"
 	"github.com/kamioair/qf/utils/qconvert"
 	"router/inner/config"
+	"router/inner/models"
 	"strings"
 	"sync"
 	"time"
@@ -165,6 +167,56 @@ func (a *Alarm) AddDeviceState(raw any) {
 	a.OnNotice("RouteDeviceAlarm", a.uploadState)
 }
 
+func (d *Alarm) GetDeviceStateDetail() (*models.DeviceStateFull, error) {
+	full := &models.DeviceStateFull{
+		Network: "online",
+		Cpu:     "ok",
+		Memory:  "ok",
+		Disk:    map[string]string{},
+		Process: map[string]string{},
+		Errors:  map[string]string{},
+	}
+
+	devInfo, _ := qservice.DeviceCode.LoadFromFile()
+	full.Id = devInfo.Id
+	full.Name = devInfo.Name
+	state := d.deviceState[devInfo.Id]
+	if state.Cpu {
+		full.Cpu = "alarm"
+	}
+	if state.Memory {
+		full.Memory = "alarm"
+	}
+	for key, ok := range state.Disk {
+		if ok {
+			full.Disk[key] = "alarm"
+		} else {
+			full.Disk[key] = "ok"
+		}
+	}
+	for key, ok := range state.Process {
+		if ok {
+			full.Process[key] = "ok"
+		} else {
+			full.Process[key] = "exit"
+		}
+	}
+	second := time.Now().Local().Sub(state.Heart).Seconds()
+	if second > 20 {
+		full.Network = "offline"
+	}
+	for k, v := range state.Modules {
+		// 这里应该要从日志文件里面获取
+		if v.Errors != nil {
+			for tp, err := range v.Errors {
+				full.Errors[k] = fmt.Sprintf("%s:%s", tp, err)
+			}
+		}
+	}
+
+	return full, nil
+}
+
 func (a *Alarm) checkLoop() {
 	// 定时检测是否有状态变化
 	ticker := time.NewTicker(10 * time.Second)
@@ -226,6 +278,9 @@ func (a *Alarm) setUploadAlarms(key string, name string, where bool, trueValue s
 		state.Alarms[name] = trueValue
 	} else {
 		delete(state.Alarms, name)
+		if len(state.Alarms) == 0 {
+			state.Alarms = nil
+		}
 	}
 	a.uploadState[key] = state
 }

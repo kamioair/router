@@ -228,13 +228,13 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 		if strings.Contains(newModule, "/") == false {
 			// 如果是客户端，则补上ID，反之去掉
 			if newModule == "Route" {
-				ssp := strings.Split(devCode, "_")
-				if len(ssp) > 1 {
-					newModule = fmt.Sprintf("Route.%s", devCode)
+				if config.Config.Mode == config.ERouteClient {
+					newModule = fmt.Sprintf("%s.%s", newModule, devCode)
 				}
 			} else {
 				newModule = fmt.Sprintf("%s.%s", newModule, devCode)
 			}
+			fmt.Println("【RouteRequest】", newModule, info.Route)
 			rs, err := r.DownRequestFunc(newModule, info.Route, info.Content)
 			if err != nil {
 				return nil, err
