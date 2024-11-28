@@ -59,13 +59,11 @@ func (m *Monitor) checkCpu() {
 	}
 	if percentages[0] < config.Config.Monitor.CpuAlarm {
 		m.cpuAlarm = time.Now().Local()
+		m.AddAlarmCpu(false)
 	}
 	if time.Now().Sub(m.cpuAlarm).Seconds() >= config.Config.Monitor.Duration {
 		// 触发报警
-		m.cpuAlarm = time.Now().Local()
 		m.AddAlarmCpu(true)
-	} else {
-		m.AddAlarmCpu(false)
 	}
 }
 
@@ -76,13 +74,11 @@ func (m *Monitor) checkMemory() {
 	}
 	if v.UsedPercent < config.Config.Monitor.MemAlarm {
 		m.memAlarm = time.Now().Local()
+		m.AddAlarmMem(false)
 	}
 	if time.Now().Sub(m.memAlarm).Seconds() >= config.Config.Monitor.Duration {
 		// 触发报警
-		m.memAlarm = time.Now().Local()
 		m.AddAlarmMem(true)
-	} else {
-		m.AddAlarmMem(false)
 	}
 }
 

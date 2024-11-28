@@ -157,7 +157,15 @@ func (d *Device) GetDeviceList() ([]models.DeviceInfo, error) {
 			if sp[0] != dev.Id {
 				continue
 			}
-			dev.Alarms = v
+			if dev.Alarms == nil {
+				dev.Alarms = []models.StateItem{}
+			}
+			for k1, v1 := range v {
+				dev.Alarms = append(dev.Alarms, models.StateItem{
+					Name:  k1,
+					Value: v1,
+				})
+			}
 		}
 
 		okList = append(okList, dev)

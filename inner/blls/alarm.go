@@ -93,6 +93,9 @@ func (a *Alarm) AddHeart(key string) {
 }
 
 func (a *Alarm) AddError(key string, title, err string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
 	sp := strings.Split(key, "^")
 	if len(sp) < 2 {
 		return
@@ -159,8 +162,51 @@ func (a *Alarm) AddDeviceState(raw any) {
 	defer a.lock.Unlock()
 
 	content := qconvert.ToAny[map[string]uploadInfo](raw)
+	fmt.Println("【AddDeviceState】", content)
 	for k, v := range content {
 		a.uploadState[k] = v
+
+		sp := strings.Split(k, ".")
+		if len(sp) < 2 {
+			continue
+		}
+		dev := a.deviceState[sp[0]]
+		if _, ok := v.Alarms["Cpu"]; ok {
+			dev.Cpu = true
+		}
+		if _, ok := v.Alarms["Memory"]; ok {
+			dev.Memory = true
+		}
+		if val, ok := v.Alarms["Process"]; ok {
+			list := make([]string, 0)
+			_ = json.Unmarshal([]byte(val), &list)
+			for _, l := range list {
+				sp := strings.Split(l, ":")
+				if dev.Process == nil {
+					dev.Process = map[string]bool{}
+				}
+				if sp[1] == "exit" {
+					dev.Process[sp[0]] = false
+				} else {
+					dev.Process[sp[0]] = true
+				}
+			}
+
+		}
+		if sp[1] != "Route" {
+			if dev.Modules == nil {
+				dev.Modules = map[string]moduleInfo{}
+			}
+			devm := dev.Modules[sp[1]]
+			if devm.Errors == nil {
+				devm.Errors = map[string]string{}
+			}
+			for k1, v1 := range v.Alarms {
+				devm.Errors[k1] = v1
+			}
+			dev.Modules[sp[1]] = devm
+		}
+		a.deviceState[sp[0]] = dev
 	}
 
 	// 通知前端有故障
@@ -172,9 +218,9 @@ func (d *Alarm) GetDeviceStateDetail() (*models.DeviceStateFull, error) {
 		Network: "online",
 		Cpu:     "ok",
 		Memory:  "ok",
-		Disk:    map[string]string{},
-		Process: map[string]string{},
-		Errors:  map[string]string{},
+		Disk:    make([]models.StateItem, 0),
+		Process: make([]models.StateItem, 0),
+		Errors:  make([]models.StateItem, 0),
 	}
 
 	devInfo, _ := qservice.DeviceCode.LoadFromFile()
@@ -188,18 +234,24 @@ func (d *Alarm) GetDeviceStateDetail() (*models.DeviceStateFull, error) {
 		full.Memory = "alarm"
 	}
 	for key, ok := range state.Disk {
+		value := "ok"
 		if ok {
-			full.Disk[key] = "alarm"
-		} else {
-			full.Disk[key] = "ok"
+			value = "alarm"
 		}
+		full.Disk = append(full.Disk, models.StateItem{
+			Name:  key,
+			Value: value,
+		})
 	}
 	for key, ok := range state.Process {
-		if ok {
-			full.Process[key] = "ok"
-		} else {
-			full.Process[key] = "exit"
+		value := "ok"
+		if ok == false {
+			value = "exit"
 		}
+		full.Process = append(full.Process, models.StateItem{
+			Name:  key,
+			Value: value,
+		})
 	}
 	second := time.Now().Local().Sub(state.Heart).Seconds()
 	if second > 20 {
@@ -209,7 +261,10 @@ func (d *Alarm) GetDeviceStateDetail() (*models.DeviceStateFull, error) {
 		// 这里应该要从日志文件里面获取
 		if v.Errors != nil {
 			for tp, err := range v.Errors {
-				full.Errors[k] = fmt.Sprintf("%s:%s", tp, err)
+				full.Errors = append(full.Errors, models.StateItem{
+					Name:  k,
+					Value: fmt.Sprintf("%s:%s", tp, err),
+				})
 			}
 		}
 	}
@@ -227,8 +282,6 @@ func (a *Alarm) checkLoop() {
 		case <-ticker.C:
 			// 查看是否有异常
 			a.lock.Lock()
-			a.lock.Unlock()
-
 			for id, info := range a.deviceState {
 				// 检测模块
 				for name, v := range info.Modules {
@@ -263,7 +316,7 @@ func (a *Alarm) checkLoop() {
 				processStr, _ := json.Marshal(processAlarm)
 				a.setUploadAlarms(key, "Process", len(processAlarm) > 0, string(processStr))
 			}
-
+			a.lock.Unlock()
 			a.uploadChan <- a.uploadState
 		}
 	}
@@ -289,9 +342,10 @@ func (a *Alarm) uploadLoop() {
 	for true {
 		select {
 		case content := <-a.uploadChan:
-			str, _ := json.Marshal(a.uploadState)
+			str, _ := json.Marshal(content)
 			// 如果和上次上报的不一致才进行上报
 			if a.lastAlarm != string(str) {
+				fmt.Println(fmt.Sprintf("【状态发送改变】\n原：%s\n新：%s", a.lastAlarm, string(str)))
 				a.lastAlarm = string(str)
 				if config.Config.Mode == config.ERouteServer && config.Config.UpMqtt.Addr == "" {
 					// 根级别服务，则直接发送通知

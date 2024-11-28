@@ -57,6 +57,8 @@ func onInit(moduleName string) {
 	monitorBll.Start()
 	alarmBll.Start(routeBll.GetDevId())
 
+	onLog(qdefine.ELogError, "InstrDecodePlugin", errors.New("未将对象引用到实例化"))
+
 	// 输出信息
 	fmt.Printf("[DeviceInfo]:%s^%s\n", routeBll.GetDevId(), routeBll.GetDevName())
 }
@@ -82,7 +84,8 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	case "ErrorLog":
 		devId := ctx.GetString("id")
 		title := ctx.GetString("title")
-		err := fmt.Sprintf("%s: %s", ctx.GetString("time"), ctx.GetString("error"))
+		//err := fmt.Sprintf("%s: %s", ctx.GetString("time"), ctx.GetString("error"))
+		err := ctx.GetString("error")
 		alarmBll.AddError(devId, title, err)
 		return true, nil
 
@@ -97,7 +100,6 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 		devices := qconvert.ToAny[[]string](ctx.Raw())
 		return deviceBll.GetModuleList(devices)
 	case "DeviceList":
-		fmt.Println("【DeviceList】")
 		return deviceBll.GetDeviceList()
 	case "Request":
 		info := qconvert.ToAny[models.RouteInfo](ctx.Raw())

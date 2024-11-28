@@ -19,8 +19,8 @@ var Config = struct {
 		MemAlarm:  90,
 		DiskAlarm: 90,
 		Duration:  30,
-		DiskPaths: []string{},
-		Processes: []string{},
+		DiskPaths: []string{"C:", "D:"},
+		Processes: []string{"LisInstr.exe"},
 	},
 	UpMqtt: qdefine.BrokerConfig{
 		Addr:    "",
