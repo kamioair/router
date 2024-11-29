@@ -22,10 +22,8 @@ var (
 	service *qservice.MicroService
 
 	// 其他业务
-	deviceBll  *blls.Device
-	routeBll   *blls.Route
-	monitorBll *blls.Monitor
-	alarmBll   *blls.Alarm
+	deviceBll *blls.Device
+	routeBll  *blls.Route
 )
 
 // 初始化
@@ -42,68 +40,70 @@ func onInit(moduleName string) {
 	routeBll.ResetClientFunc = service.ResetClient
 	deviceBll = blls.NewDeviceBll()
 	deviceBll.UpKnockDoorFunc = routeBll.KnockDoor
-	alarmBll = blls.NewAlarmBll()
-	alarmBll.SendDeviceState = routeBll.SendDeviceState
-	alarmBll.OnNotice = onNotice
-	deviceBll.GetAlarmsFunc = alarmBll.GetAlarms
-	monitorBll = blls.NewMonitorBll()
-	monitorBll.AddAlarmCpu = alarmBll.AddAlarmCpu
-	monitorBll.AddAlarmMem = alarmBll.AddAlarmMemory
-	monitorBll.AddAlarmDisk = alarmBll.AddAlarmDisk
-	monitorBll.AddAlarmProcess = alarmBll.AddAlarmProcess
+	deviceBll.UpSendHeartFunc = routeBll.SendHeart
 
 	// 启动
 	routeBll.Start()
-	monitorBll.Start()
-	alarmBll.Start(routeBll.GetDevId())
 
-	onLog(qdefine.ELogError, "InstrDecodePlugin", errors.New("未将对象引用到实例化"))
+	//onLog(qdefine.ELogError, "InstrDecodePlugin", errors.New("未将对象引用到实例化"))
 
 	// 输出信息
-	fmt.Printf("[DeviceInfo]:%s^%s\n", routeBll.GetDevId(), routeBll.GetDevName())
+	fmt.Printf("[DeviceKnock]:%s^%s\n", routeBll.GetDevId(), routeBll.GetDevName())
 }
 
 // 处理外部请求
 func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	switch route {
 
-	case "NewDeviceId": // 由下级路由模块请求，生成一个新的设备ID
+	// 由下级路由模块请求，生成一个新的设备ID
+	case "NewDeviceId":
 		return deviceBll.NewDeviceId()
 
-	case "ServerDevId": // 由下级模块请求，获取服务器的设备ID
+		// 由下级模块请求，获取服务器的设备ID
+	case "ServerDevId":
 		return routeBll.GetDevId(), nil
 
-	case "KnockDoor": // 由下级模块请求，敲门
-		info := qconvert.ToAny[models.DeviceInfo](ctx.Raw())
+		// 由下级模块请求，敲门
+	case "KnockDoor":
+		info := qconvert.ToAny[models.DeviceKnock](ctx.Raw())
 		return deviceBll.KnockDoor(info, routeBll.GetDevId())
 
+		// 下级路由请求，发送心跳
 	case "Heart":
-		alarmBll.AddHeart(ctx.Raw().(string))
+		id := ctx.GetString("id")
+		info := map[string]models.DeviceAlarm{}
+		ctx.GetStruct("Info", &info)
+		deviceBll.AddHeart(id, info)
 		return true, nil
 
+		// 下级路由请求，发送错误日志
 	case "ErrorLog":
 		devId := ctx.GetString("id")
+		module := ctx.GetString("module")
 		title := ctx.GetString("title")
-		//err := fmt.Sprintf("%s: %s", ctx.GetString("time"), ctx.GetString("error"))
 		err := ctx.GetString("error")
-		alarmBll.AddError(devId, title, err)
+		deviceBll.AddError(devId, module, title, err)
 		return true, nil
 
-	case "UploadDeviceState":
-		alarmBll.AddDeviceState(ctx.Raw())
-		return true, nil
+		// 仅获取所有报警设备列表
+	case "AlarmDeviceList":
+		return deviceBll.GetDeviceAlarm()
 
-	case "GetDeviceStateDetail":
-		return alarmBll.GetDeviceStateDetail()
+		// 获取所有设备列表
+	case "AllDeviceList":
+		return deviceBll.GetDeviceList()
 
+		// 获取指定设备包含的模块列表
 	case "ModuleList":
 		devices := qconvert.ToAny[[]string](ctx.Raw())
 		return deviceBll.GetModuleList(devices)
-	case "DeviceList":
-		return deviceBll.GetDeviceList()
+
+		// 路由请求
 	case "Request":
 		info := qconvert.ToAny[models.RouteInfo](ctx.Raw())
 		return routeBll.Req(info)
+
+		// 反向ping测试
 	case "Ping":
 		fmt.Println("[Ping]:", "OK")
 		return true, nil

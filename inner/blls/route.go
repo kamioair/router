@@ -34,8 +34,6 @@ func (r *Route) Start() {
 
 	// 如果配置了上级路由，则连接
 	r.initUpAdapter(r.deviceInfo.Id)
-
-	go r.heartLoop()
 }
 
 func (r *Route) GetDevId() string {
@@ -46,7 +44,7 @@ func (r *Route) GetDevName() string {
 	return r.deviceInfo.Name
 }
 
-func (r *Route) KnockDoor(info models.DeviceInfo) {
+func (r *Route) KnockDoor(info models.DeviceKnock) {
 	if r.upAdapter == nil {
 		return
 	}
@@ -76,20 +74,6 @@ func (r *Route) Req(info models.RouteInfo) (any, error) {
 
 	// 路由请求
 	return r.routeRequest(info)
-}
-
-func (r *Route) SendDeviceState(content any) {
-	// 根级路由不用在上报
-	if config.Config.Mode == config.ERouteServer && config.Config.UpMqtt.Addr == "" {
-		return
-	}
-	if r.upAdapter != nil {
-		// 有上级路由，则往上报
-		r.upAdapter.Req(r.name, "UploadDeviceState", content)
-	} else {
-		// 向Broker的路由模块上报
-		r.DownRequestFunc(r.name, "UploadDeviceState", content)
-	}
 }
 
 func (r *Route) loadDeviceInfo() {
@@ -260,18 +244,17 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 	}
 }
 
-func (r *Route) heartLoop() {
-	if r.upAdapter == nil {
-		return
+func (r *Route) SendHeart(info map[string]models.DeviceAlarm) {
+	params := map[string]any{
+		"Id":   r.deviceInfo.Id,
+		"Info": info,
 	}
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			// 向上级路由模块发送请求
-			go r.upAdapter.Req(r.name, "Heart", fmt.Sprintf("%s^%s", r.deviceInfo.Id, r.name))
+	switch config.Config.Mode {
+	case config.ERouteClient:
+		r.DownRequestFunc(r.name, "Heart", params)
+	case config.ERouteServer:
+		if r.upAdapter != nil {
+			r.upAdapter.Req(r.name, "Heart", params)
 		}
 	}
 }
