@@ -44,12 +44,11 @@ func (r *Route) Start() {
 			r.servDiscovery = qconvert.ToAny[models.ServDiscovery](resp.Content)
 		}
 	} else {
-		ctx, err := r.DownRequestFunc(r.name, "DiscoveryList", []string{"local"})
+		ctx, err := r.DownRequestFunc(r.name+".root", "DiscoveryList", []string{"local"})
 		if err == nil {
 			r.servDiscovery = qconvert.ToAny[models.ServDiscovery](ctx.Raw())
 		}
 	}
-
 }
 
 func (r *Route) GetDevId() string {
@@ -65,14 +64,22 @@ func (r *Route) GetDevName() string {
 }
 
 func (r *Route) KnockDoor(info models.DeviceKnock) {
-	if r.upAdapter == nil {
-		return
+	if config.Config.Mode == config.ERouteClient {
+		if info.Parent == info.Id {
+			info.Parent = r.servDiscovery.Id
+		}
+		_, _ = r.DownRequestFunc(r.name+".root", "KnockDoor", info)
+	} else {
+		if r.upAdapter == nil {
+			return
+		}
+		// 如果是本机路由，则附加上级路由的ID
+		if info.Parent == info.Id {
+			info.Parent = r.servDiscovery.Id
+		}
+		_ = r.upAdapter.Req(r.name, "KnockDoor", info)
 	}
-	// 如果是本机路由，则附加上级路由的ID
-	if info.Parent == info.Id {
-		info.Parent = r.servDiscovery.Id
-	}
-	_ = r.upAdapter.Req(r.name, "KnockDoor", info)
+
 }
 
 func (r *Route) Req(info models.RouteInfo) (any, error) {
@@ -116,7 +123,7 @@ func (r *Route) loadDeviceInfo() {
 			// 普通服务器模式
 			// 创建临时连接，并问上级路由模块请求
 			r.initUpAdapter(qdefine.NewUUID() + "[TEMP]")
-			ctx, err := r.upRequestFunc(r.name, "NewDeviceId", nil)
+			ctx, err := r.upRequestFunc(r.name+".root", "NewDeviceId", nil)
 			if err != nil {
 				panic(err)
 			}
@@ -131,7 +138,7 @@ func (r *Route) loadDeviceInfo() {
 		}
 	case config.ERouteClient:
 		// 客户端模式，向服务端路由请求
-		ctx, err := r.DownRequestFunc(r.name, "NewDeviceId", nil)
+		ctx, err := r.DownRequestFunc(r.name+".root", "NewDeviceId", nil)
 		if err != nil {
 			panic(err)
 		}
@@ -188,6 +195,7 @@ func (r *Route) onStatusChanged(adapter easyCon.IAdapter, status easyCon.EStatus
 
 func (r *Route) upRequestFunc(module, route string, content any) (any, error) {
 	if r.upAdapter != nil {
+		module = strings.Replace(module, ".root", "", -1)
 		resp := r.upAdapter.Req(module, route, content)
 		if resp.RespCode == easyCon.ERespSuccess {
 			return resp.Content, nil
@@ -268,10 +276,15 @@ func (r *Route) SendHeart(info map[string]models.DeviceAlarm) {
 	}
 	switch config.Config.Mode {
 	case config.ERouteClient:
-		r.DownRequestFunc(r.name, "Heart", params)
+		r.DownRequestFunc(r.name+".root", "Heart", params)
 	case config.ERouteServer:
 		if r.upAdapter != nil {
 			r.upAdapter.Req(r.name, "Heart", params)
 		}
 	}
+}
+
+func (r *Route) GetDiscoveryList() string {
+	str, _ := json.Marshal(r.servDiscovery)
+	return string(str)
 }

@@ -71,23 +71,25 @@ func (m *monitor) AddHeart(devId string) {
 }
 
 func (m *monitor) checkCpu() {
-	percentages, err := cpu.Percent(time.Second, false)
+	percentages, err := cpu.Percent(time.Second, true)
 	if err != nil || len(percentages) == 0 {
 		return
 	}
+
+	val := int(percentages[0])
 
 	cpuState := models.CpuMemState{}
 	if percentages[0] < config.Monitor.CpuAlarm {
 		m.cpuAlarm = time.Now().Local()
 		cpuState = models.CpuMemState{
-			Value: fmt.Sprintf("%d%", int(percentages[0])),
+			Value: fmt.Sprintf("%d", val) + "%",
 			IsOk:  true,
 		}
 	} else {
 		if time.Now().Sub(m.cpuAlarm).Seconds() >= config.Monitor.Duration {
 			// 触发报警
 			cpuState = models.CpuMemState{
-				Value: fmt.Sprintf("%d%", int(percentages[0])),
+				Value: fmt.Sprintf("%d", val) + "%",
 				IsOk:  false,
 			}
 		}
@@ -109,14 +111,14 @@ func (m *monitor) checkMemory() {
 	if v.UsedPercent < config.Monitor.MemAlarm {
 		m.memAlarm = time.Now().Local()
 		memState = models.CpuMemState{
-			Value: fmt.Sprintf("%d%", int(v.UsedPercent)),
+			Value: fmt.Sprintf("%d", int(v.UsedPercent)) + "%",
 			IsOk:  true,
 		}
 	} else {
 		if time.Now().Sub(m.memAlarm).Seconds() >= config.Monitor.Duration {
 			// 触发报警
 			memState = models.CpuMemState{
-				Value: fmt.Sprintf("%d%", int(v.UsedPercent)),
+				Value: fmt.Sprintf("%d", int(v.UsedPercent)) + "%",
 				IsOk:  false,
 			}
 		}
@@ -144,13 +146,13 @@ func (m *monitor) checkDisk() {
 			if usage.UsedPercent >= config.Monitor.DiskAlarm {
 				alarms = append(alarms, models.DiskState{
 					Name:  partition.Mountpoint,
-					Value: fmt.Sprintf("%d", int(usage.UsedPercent)),
+					Value: fmt.Sprintf("%d", int(usage.UsedPercent)) + "%",
 					IsOk:  false,
 				})
 			} else {
 				alarms = append(alarms, models.DiskState{
 					Name:  partition.Mountpoint,
-					Value: fmt.Sprintf("%d", int(usage.UsedPercent)),
+					Value: fmt.Sprintf("%d", int(usage.UsedPercent)) + "%",
 					IsOk:  true,
 				})
 			}
@@ -159,13 +161,13 @@ func (m *monitor) checkDisk() {
 				if usage.UsedPercent >= config.Monitor.DiskAlarm {
 					alarms = append(alarms, models.DiskState{
 						Name:  partition.Mountpoint,
-						Value: fmt.Sprintf("%d", int(usage.UsedPercent)),
+						Value: fmt.Sprintf("%d", int(usage.UsedPercent)) + "%",
 						IsOk:  false,
 					})
 				} else {
 					alarms = append(alarms, models.DiskState{
 						Name:  partition.Mountpoint,
-						Value: fmt.Sprintf("%d", int(usage.UsedPercent)),
+						Value: fmt.Sprintf("%d", int(usage.UsedPercent)) + "%",
 						IsOk:  true,
 					})
 				}
@@ -185,13 +187,13 @@ func (m *monitor) checkDisk() {
 				if usage.UsedPercent >= config.Monitor.DiskAlarm {
 					alarms = append(alarms, models.DiskState{
 						Name:  partition.Mountpoint,
-						Value: fmt.Sprintf("%d", int(usage.UsedPercent)),
+						Value: fmt.Sprintf("%d", int(usage.UsedPercent)) + "%",
 						IsOk:  false,
 					})
 				} else {
 					alarms = append(alarms, models.DiskState{
 						Name:  partition.Mountpoint,
-						Value: fmt.Sprintf("%d", int(usage.UsedPercent)),
+						Value: fmt.Sprintf("%d", int(usage.UsedPercent)) + "%",
 						IsOk:  true,
 					})
 				}

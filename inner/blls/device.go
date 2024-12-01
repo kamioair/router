@@ -112,6 +112,10 @@ func (d *Device) KnockDoor(info models.DeviceKnock) (any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
+	if info.Parent == "" {
+		info.Parent = d.servDiscovery.Id
+	}
+
 	if daos.DeviceDao != nil {
 		find := &daos.Device{}
 		if info.Parent == "" || info.Id == d.localDevId {
@@ -137,20 +141,24 @@ func (d *Device) KnockDoor(info models.DeviceKnock) (any, error) {
 			return false, err
 		}
 		// 添加到缓存
-		local, _ := daos.DeviceDao.GetCondition("code = ?", "local")
+		//local, _ := daos.DeviceDao.GetCondition("code = ?", "local")
 		dev := d.deviceCaches[info.Id]
 		dev.Id = info.Id
 		dev.Name = info.Name
 		dev.Parent = info.Parent
 		dev.Modules = fullModules
-		if local.Name == dev.Id {
-			dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s", local.Parent, dev.Id), "/")
-		} else {
-			dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s/%s", local.Parent, info.Parent, dev.Id), "/")
+		dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s/%s", d.servDiscovery.ParentUrl, info.Parent, dev.Id), "/")
+		if dev.RouteUrl == "root/root" {
+			dev.RouteUrl = "root/"
 		}
-		if dev.RouteUrl == "root" {
-			dev.RouteUrl = ""
-		}
+		//if local.Name == dev.Id {
+		//	dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s", local.Parent, dev.Id), "/")
+		//} else {
+		//	dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s/%s", local.Parent, info.Parent, dev.Id), "/")
+		//}
+		//if dev.RouteUrl == "root" {
+		//	dev.RouteUrl = ""
+		//}
 		d.deviceCaches[info.Id] = dev
 	} else {
 		// 添加到缓存
@@ -158,15 +166,33 @@ func (d *Device) KnockDoor(info models.DeviceKnock) (any, error) {
 		dev.Id = info.Id
 		dev.Name = info.Name
 		dev.Parent = info.Parent
-		dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s", info.Parent, dev.Id), "/")
-		//dev.Modules = fullModules
-		if d.servDiscovery.ParentId == "" {
-			dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s", info.Parent, dev.Id), "/")
-		} else {
-			dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s/%s", d.servDiscovery.ParentId, info.Parent, dev.Id), "/")
+		for _, nm := range info.Modules {
+			exist := false
+			for i, om := range dev.Modules {
+				if om.Name == nm.Name {
+					dev.Modules[i].Desc = nm.Desc
+					dev.Modules[i].Version = nm.Version
+					exist = true
+					break
+				}
+			}
+			if exist == false {
+				dev.Modules = append(dev.Modules, nm)
+			}
+		}
+		//if d.servDiscovery.ParentId == "" {
+		//	dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s", info.Parent, dev.Id), "/")
+		//} else {
+		//	dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s/%s", d.servDiscovery.ParentId, info.Parent, dev.Id), "/")
+		//}
+		dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s", d.servDiscovery.ParentUrl, dev.Id), "/")
+		if dev.RouteUrl == "root/root" {
+			dev.RouteUrl = "root/"
 		}
 		d.deviceCaches[info.Id] = dev
 	}
+
+	fmt.Println("【设备列表】", info, "|", len(d.deviceCaches))
 
 	// 如果有上级路由，则向上继续敲门
 	d.upKnockChan <- info
@@ -192,11 +218,14 @@ func (d *Device) GetDeviceList() ([]map[string]any, error) {
 
 	list := make([]map[string]any, 0)
 	for _, v := range d.deviceCaches {
+		url := v.RouteUrl
+		url = strings.Replace(url, "root/root", "root", -1)
+		url = strings.Replace(url, "root//root", "root", -1)
 		list = append(list, map[string]any{
 			"Id":       v.Id,
 			"Name":     v.Name,
 			"Parent":   v.Parent,
-			"RouteUrl": v.RouteUrl,
+			"RouteUrl": url,
 		})
 	}
 	return list, nil
@@ -206,6 +235,11 @@ func (d *Device) GetDeviceDetail() (models.DeviceInfo, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
+	dev := d.deviceCaches[d.localDevId]
+	url := dev.RouteUrl
+	url = strings.Replace(url, "root/root", "root", -1)
+	url = strings.Replace(url, "root//root", "root", -1)
+	dev.RouteUrl = url
 	return d.deviceCaches[d.localDevId], nil
 }
 
@@ -243,7 +277,11 @@ func (d *Device) GetDiscoveryList(devCodes []string) (models.ServDiscovery, erro
 			}
 		}
 	}
-
+	if finals.ParentId == "" {
+		finals.ParentUrl = "root"
+	} else {
+		finals.ParentUrl = d.servDiscovery.ParentUrl + "/" + finals.Id
+	}
 	return finals, nil
 }
 
@@ -278,7 +316,7 @@ func (d *Device) onMonitorChanged(tp string, content any) {
 		value := ""
 		for _, p := range dev.Process {
 			if p.IsOk == false {
-				value += p.Name + "\texit\n"
+				value += p.Name + " exit\n"
 			}
 		}
 		alarm.Set(tp, value != "", strings.Trim(value, "\n"), dev)

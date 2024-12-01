@@ -113,7 +113,8 @@ type RouteInfo struct {
 }
 
 type ServDiscovery struct {
-	Id       string            // 服务器Broker所在设备ID
-	ParentId string            // 服务的上级设备ID
-	Modules  map[string]string // 包含的服务器模块和请求设备的模块列表，key为模块名称，value为设备Id，用于请求设备查找请求模块所在的设备
+	Id        string            // 服务器Broker所在设备ID
+	ParentId  string            // 服务的上级设备ID
+	ParentUrl string            // 上级路径
+	Modules   map[string]string // 包含的服务器模块和请求设备的模块列表，key为模块名称，value为设备Id，用于请求设备查找请求模块所在的设备
 }

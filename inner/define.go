@@ -57,11 +57,11 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	//-------------------------------------------
 	//  以下是服务级路由模块，提供给所有功能模块使用的方法
 
-	case "NewDeviceId": // 下级路由请求生成一个新的设备ID
-		return deviceBll.NewDeviceId()
 	case "Request": // 跨路由请求
 		model := qconvert.ToAny[models.RouteInfo](ctx.Raw())
 		return routeBll.Req(model)
+	case "NewDeviceId": // 下级路由请求生成一个新的设备ID
+		return deviceBll.NewDeviceId()
 	case "DiscoveryList": // 返回服务id和相关模块登记列表，用于客户端进行模块发现
 		devices := qconvert.ToAny[[]string](ctx.Raw())
 		return deviceBll.GetDiscoveryList(devices)
@@ -100,6 +100,10 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 		return fmt.Println("[Ping]:", "OK")
 	}
 	return nil, errors.New("route Not Matched")
+}
+
+func onLoadServDiscoveryList() string {
+	return routeBll.GetDiscoveryList()
 }
 
 // 处理外部通知
