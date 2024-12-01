@@ -38,7 +38,7 @@ var Monitor = struct {
 	DiskAlarm: 95,
 	Duration:  30,
 	DiskPaths: []string{"C:", "D:"},
-	Processes: []string{"LisInstr.exe"},
+	Processes: []string{},
 }
 
 type ERouteMode string

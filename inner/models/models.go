@@ -19,7 +19,11 @@ type DeviceAlarm struct {
 	Alarms   []Item // 包含的警报列表
 }
 
-func (da DeviceAlarm) Set(name string, alarmWhere bool, alarmValue string) {
+func (da *DeviceAlarm) Set(name string, alarmWhere bool, alarmValue string, dev DeviceInfo) {
+	da.Id = dev.Id
+	da.Name = dev.Name
+	da.Parent = dev.Parent
+	da.RouteUrl = dev.RouteUrl
 	if alarmWhere {
 		// 添加到列表
 		add := true
@@ -106,4 +110,10 @@ type RouteInfo struct {
 	Module  string // 模块名称
 	Route   string // 方法名称
 	Content any    // 入参
+}
+
+type ServDiscovery struct {
+	Id       string            // 服务器Broker所在设备ID
+	ParentId string            // 服务的上级设备ID
+	Modules  map[string]string // 包含的服务器模块和请求设备的模块列表，key为模块名称，value为设备Id，用于请求设备查找请求模块所在的设备
 }

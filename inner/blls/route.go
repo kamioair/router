@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/kamioair/qf/qdefine"
 	"github.com/kamioair/qf/qservice"
+	"github.com/kamioair/qf/utils/qconvert"
 	easyCon "github.com/qiu-tec/easy-con.golang"
 	"router/inner/config"
 	"router/inner/models"
@@ -15,6 +16,7 @@ import (
 
 type Route struct {
 	name            string
+	servDiscovery   models.ServDiscovery
 	upAdapter       easyCon.IAdapter
 	deviceInfo      qdefine.DeviceInfo
 	DownRequestFunc qdefine.SendRequestHandler
@@ -34,10 +36,28 @@ func (r *Route) Start() {
 
 	// 如果配置了上级路由，则连接
 	r.initUpAdapter(r.deviceInfo.Id)
+
+	// 问上级要父级ID
+	if r.upAdapter != nil {
+		resp := r.upAdapter.Req(r.name, "DiscoveryList", []string{"local"})
+		if resp.RespCode == easyCon.ERespSuccess {
+			r.servDiscovery = qconvert.ToAny[models.ServDiscovery](resp.Content)
+		}
+	} else {
+		ctx, err := r.DownRequestFunc(r.name, "DiscoveryList", []string{"local"})
+		if err == nil {
+			r.servDiscovery = qconvert.ToAny[models.ServDiscovery](ctx.Raw())
+		}
+	}
+
 }
 
 func (r *Route) GetDevId() string {
 	return r.deviceInfo.Id
+}
+
+func (r *Route) GetParentDev() models.ServDiscovery {
+	return r.servDiscovery
 }
 
 func (r *Route) GetDevName() string {
@@ -48,12 +68,9 @@ func (r *Route) KnockDoor(info models.DeviceKnock) {
 	if r.upAdapter == nil {
 		return
 	}
-	// 问上级路由要父级ID
+	// 如果是本机路由，则附加上级路由的ID
 	if info.Parent == info.Id {
-		resp := r.upAdapter.Req(r.name, "ServerDevId", nil)
-		if resp.RespCode == easyCon.ERespSuccess {
-			info.Parent = resp.Content.(string)
-		}
+		info.Parent = r.servDiscovery.Id
 	}
 	_ = r.upAdapter.Req(r.name, "KnockDoor", info)
 }
@@ -98,7 +115,7 @@ func (r *Route) loadDeviceInfo() {
 		} else {
 			// 普通服务器模式
 			// 创建临时连接，并问上级路由模块请求
-			r.initUpAdapter(qdefine.NewUUID())
+			r.initUpAdapter(qdefine.NewUUID() + "[TEMP]")
 			ctx, err := r.upRequestFunc(r.name, "NewDeviceId", nil)
 			if err != nil {
 				panic(err)
@@ -136,10 +153,10 @@ func (r *Route) loadDeviceInfo() {
 	r.ResetClientFunc(device.Id, isAddModuleSuffix)
 }
 
-func (r *Route) initUpAdapter(devCode string) {
+func (r *Route) initUpAdapter(devId string) {
 	cfg := config.Config.UpMqtt
 	if cfg.Addr != "" {
-		setting := easyCon.NewSetting(fmt.Sprintf("Route.%s", devCode), cfg.Addr, r.onReq, r.onStatusChanged)
+		setting := easyCon.NewSetting(fmt.Sprintf("Route.%s", devId), cfg.Addr, r.onReq, r.onStatusChanged)
 		setting.UID = cfg.UId
 		setting.PWD = cfg.Pwd
 		setting.TimeOut = time.Duration(cfg.TimeOut) * time.Second

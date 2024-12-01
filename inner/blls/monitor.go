@@ -22,8 +22,8 @@ type monitor struct {
 	diskAlarm        time.Time
 	lock             *sync.Mutex
 	heartAlarms      map[string]time.Time
-	lastCpuAlarm     string
-	lastMemAlarm     string
+	lastCpuAlarm     models.CpuMemState
+	lastMemAlarm     models.CpuMemState
 	lastDiskAlarm    string
 	lastProcessAlarm string
 	lastHeartAlarm   string
@@ -93,9 +93,8 @@ func (m *monitor) checkCpu() {
 		}
 	}
 	// 和上次比较，如果不一致，进行上报
-	str, _ := json.Marshal(cpuState)
-	if m.lastCpuAlarm != string(str) {
-		m.lastCpuAlarm = string(str)
+	if m.lastCpuAlarm != cpuState {
+		m.lastCpuAlarm = cpuState
 		go m.onStateNotice("CPU", cpuState)
 	}
 }
@@ -123,9 +122,8 @@ func (m *monitor) checkMemory() {
 		}
 	}
 	// 和上次比较，如果不一致，进行上报
-	str, _ := json.Marshal(memState)
-	if m.lastMemAlarm != string(str) {
-		m.lastMemAlarm = string(str)
+	if m.lastMemAlarm != memState {
+		m.lastMemAlarm = memState
 		go m.onStateNotice("MEM", memState)
 	}
 }
@@ -136,7 +134,7 @@ func (m *monitor) checkDisk() {
 		return
 	}
 
-	alarms := []models.DiskState{}
+	alarms := make([]models.DiskState, 0)
 	for _, partition := range partitions {
 		usage, err := disk.Usage(partition.Mountpoint)
 		if err != nil {

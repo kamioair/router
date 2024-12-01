@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
-	"github.com/kamioair/qf/qservice"
+	"github.com/kamioair/qf/qdefine"
 	"router/inner/daos"
 	"router/inner/models"
 	"strings"
@@ -15,13 +15,15 @@ import (
 type Device struct {
 	UpKnockDoorFunc func(info models.DeviceKnock)            // 向上级敲门方法
 	UpSendHeartFunc func(info map[string]models.DeviceAlarm) // 向上级发送心跳
+	SendRequest     func(module, route string, params any) (qdefine.Context, error)
 
-	monitorBll   *monitor
-	lock         *sync.Mutex
-	localDevId   string
-	alarmCaches  map[string]models.DeviceAlarm
-	deviceCaches map[string]models.DeviceInfo
-	upKnockChan  chan models.DeviceKnock
+	monitorBll    *monitor
+	lock          *sync.Mutex
+	localDevId    string
+	servDiscovery models.ServDiscovery
+	alarmCaches   map[string]models.DeviceAlarm
+	deviceCaches  map[string]models.DeviceInfo
+	upKnockChan   chan models.DeviceKnock
 }
 
 // NewDeviceBll 构造
@@ -39,8 +41,9 @@ func NewDeviceBll() *Device {
 }
 
 // Start 启动
-func (d *Device) Start(devId string) {
+func (d *Device) Start(devId string, servDiscovery models.ServDiscovery) {
 	d.localDevId = devId
+	d.servDiscovery = servDiscovery
 	d.monitorBll.Start()
 }
 
@@ -58,6 +61,10 @@ func (d *Device) AddHeart(devId string, routeHearts map[string]models.DeviceAlar
 	d.monitorBll.AddHeart(devId)
 	for k, v := range routeHearts {
 		a := d.alarmCaches[k]
+		a.Id = v.Id
+		a.Name = v.Name
+		a.Parent = v.Parent
+		a.RouteUrl = v.RouteUrl
 		a.Alarms = v.Alarms
 		d.alarmCaches[k] = a
 	}
@@ -68,11 +75,12 @@ func (d *Device) AddError(devId string, module string, title string, err string)
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
+	dev := d.deviceCaches[devId]
+
 	alarm := d.alarmCaches[devId]
-	alarm.Set(module, true, title)
+	alarm.Set(module, true, title, dev)
 	d.alarmCaches[devId] = alarm
 
-	dev := d.deviceCaches[devId]
 	for i := 0; i < len(dev.Modules); i++ {
 		mod := dev.Modules[i]
 		if mod.Name == module {
@@ -100,48 +108,65 @@ func (d *Device) AddError(devId string, module string, title string, err string)
 }
 
 // KnockDoor 连接到Broker的所有模块敲门处理，用于记录所有设备和设备包含的模块信息到数据库中
-func (d *Device) KnockDoor(info models.DeviceKnock, devId string) (any, error) {
+func (d *Device) KnockDoor(info models.DeviceKnock) (any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	find := &daos.Device{}
-	if info.Parent == "" || info.Id == devId {
-		// 本级路由
-		find, _ = daos.DeviceDao.GetCondition("code = ?", "local")
-		find.Name = info.Id
-	} else {
-		// 下级路由
-		find, _ = daos.DeviceDao.GetCondition("code = ?", info.Id)
-		if find == nil {
-			find = &daos.Device{Code: info.Id}
+	if daos.DeviceDao != nil {
+		find := &daos.Device{}
+		if info.Parent == "" || info.Id == d.localDevId {
+			// 本级路由
+			find, _ = daos.DeviceDao.GetCondition("code = ?", "local")
+			find.Name = info.Id
+			find.Parent = d.servDiscovery.Id
+		} else {
+			// 下级路由
+			find, _ = daos.DeviceDao.GetCondition("code = ?", info.Id)
+			if find == nil {
+				find = &daos.Device{Code: info.Id}
+			}
+			find.Name = info.Name
+			find.Parent = info.Parent
 		}
-		find.Name = info.Name
-		find.Parent = info.Parent
-	}
-	finalModules := d.joinModules(find.Modules, info.Modules)
-	js, _ := json.Marshal(finalModules)
-	find.Modules = string(js)
+		saveModules, fullModules := d.joinModules(find.Modules, info.Modules)
+		find.Modules = saveModules
 
-	// 更新数据库
-	err := daos.DeviceDao.Save(find)
-	if err != nil {
-		return false, err
-	}
-
-	// 添加到缓存
-	local, _ := daos.DeviceDao.GetCondition("code = ?", "local")
-	dev := d.deviceCaches[info.Id]
-	dev.Id = info.Id
-	dev.Name = info.Name
-	dev.Parent = info.Parent
-	dev.Modules = finalModules
-	if local.Name == dev.Id {
-		dev.RouteUrl = fmt.Sprintf("%s/%s", local.Parent, dev.Id)
+		// 更新数据库
+		err := daos.DeviceDao.Save(find)
+		if err != nil {
+			return false, err
+		}
+		// 添加到缓存
+		local, _ := daos.DeviceDao.GetCondition("code = ?", "local")
+		dev := d.deviceCaches[info.Id]
+		dev.Id = info.Id
+		dev.Name = info.Name
+		dev.Parent = info.Parent
+		dev.Modules = fullModules
+		if local.Name == dev.Id {
+			dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s", local.Parent, dev.Id), "/")
+		} else {
+			dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s/%s", local.Parent, info.Parent, dev.Id), "/")
+		}
+		if dev.RouteUrl == "root" {
+			dev.RouteUrl = ""
+		}
+		d.deviceCaches[info.Id] = dev
 	} else {
-		dev.RouteUrl = fmt.Sprintf("%s/%s/%s", local.Parent, local.Name, dev.Id)
+		// 添加到缓存
+		dev := d.deviceCaches[info.Id]
+		dev.Id = info.Id
+		dev.Name = info.Name
+		dev.Parent = info.Parent
+		dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s", info.Parent, dev.Id), "/")
+		//dev.Modules = fullModules
+		if d.servDiscovery.ParentId == "" {
+			dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s", info.Parent, dev.Id), "/")
+		} else {
+			dev.RouteUrl = strings.Trim(fmt.Sprintf("%s/%s/%s", d.servDiscovery.ParentId, info.Parent, dev.Id), "/")
+		}
+		d.deviceCaches[info.Id] = dev
 	}
-
-	d.deviceCaches[info.Id] = dev
 
 	// 如果有上级路由，则向上继续敲门
 	d.upKnockChan <- info
@@ -161,19 +186,35 @@ func (d *Device) GetDeviceAlarm() ([]models.DeviceAlarm, error) {
 	return list, nil
 }
 
-func (d *Device) GetDeviceList() ([]models.DeviceInfo, error) {
+func (d *Device) GetDeviceList() ([]map[string]any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	list := []models.DeviceInfo{}
+	list := make([]map[string]any, 0)
 	for _, v := range d.deviceCaches {
-		list = append(list, v)
+		list = append(list, map[string]any{
+			"Id":       v.Id,
+			"Name":     v.Name,
+			"Parent":   v.Parent,
+			"RouteUrl": v.RouteUrl,
+		})
 	}
 	return list, nil
 }
 
-func (d *Device) GetModuleList(devCodes []string) (map[string]string, error) {
-	finals := map[string]string{}
+func (d *Device) GetDeviceDetail() (models.DeviceInfo, error) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	return d.deviceCaches[d.localDevId], nil
+}
+
+func (d *Device) GetDiscoveryList(devCodes []string) (models.ServDiscovery, error) {
+	finals := models.ServDiscovery{
+		Id:       d.localDevId,
+		ParentId: d.servDiscovery.Id,
+		Modules:  map[string]string{},
+	}
 
 	// 先查找服务器的所有模块
 	for _, devCode := range devCodes {
@@ -182,11 +223,10 @@ func (d *Device) GetModuleList(devCodes []string) (map[string]string, error) {
 			if err != nil {
 				return finals, err
 			}
-			devInfo, _ := qservice.DeviceCode.LoadFromFile()
 			modules := make([]models.ModuleInfo, 0)
 			_ = json.Unmarshal([]byte(local.Modules), &modules)
 			for _, m := range modules {
-				finals[m.Name] = devInfo.Id
+				finals.Modules[m.Name] = local.Name
 			}
 		} else {
 			// 再查找指定设备的模块
@@ -198,7 +238,7 @@ func (d *Device) GetModuleList(devCodes []string) (map[string]string, error) {
 				modules := make([]models.ModuleInfo, 0)
 				_ = json.Unmarshal([]byte(device.Modules), &modules)
 				for _, m := range modules {
-					finals[m.Name] = device.Code
+					finals.Modules[m.Name] = device.Code
 				}
 			}
 		}
@@ -217,11 +257,11 @@ func (d *Device) onMonitorChanged(tp string, content any) {
 	switch tp {
 	case "CPU":
 		dev.Cpu = content.(models.CpuMemState)
-		alarm.Set(tp, !dev.Cpu.IsOk, "alarm")
+		alarm.Set(tp, !dev.Cpu.IsOk, "alarm", dev)
 
 	case "MEM":
 		dev.Memory = content.(models.CpuMemState)
-		alarm.Set(tp, !dev.Memory.IsOk, "alarm")
+		alarm.Set(tp, !dev.Memory.IsOk, "alarm", dev)
 
 	case "DISK":
 		dev.Disk = content.([]models.DiskState)
@@ -231,19 +271,18 @@ func (d *Device) onMonitorChanged(tp string, content any) {
 				value += d.Name + " "
 			}
 		}
-		alarm.Set(tp, value != "", "alarm")
+		alarm.Set(tp, value != "", "alarm", dev)
 
 	case "PROCESS":
 		dev.Process = content.([]models.ProcessState)
 		value := ""
 		for _, p := range dev.Process {
 			if p.IsOk == false {
-				value += p.Name + "exit;"
+				value += p.Name + "\texit\n"
 			}
 		}
-		alarm.Set(tp, value != "", strings.Trim(value, ";"))
+		alarm.Set(tp, value != "", strings.Trim(value, "\n"), dev)
 	}
-
 	d.deviceCaches[d.localDevId] = dev
 	d.alarmCaches[d.localDevId] = alarm
 }
@@ -254,13 +293,14 @@ func (d *Device) onHeartChanged(ids map[string]bool) {
 
 	save := map[string]models.DeviceInfo{}
 	for k, v := range d.deviceCaches {
+		dev := d.deviceCaches[k]
 		alarm := d.alarmCaches[k]
 
 		v.IsOnline = true
 		if _, ok := ids[k]; ok {
 			v.IsOnline = false
 		}
-		alarm.Set("Network", !v.IsOnline, "offline")
+		alarm.Set("Network", !v.IsOnline, "offline", dev)
 
 		d.alarmCaches[k] = alarm
 		save[k] = v
@@ -288,9 +328,12 @@ func (d *Device) upLoop() {
 		case <-ticker.C:
 			// 向上级路由模块发送请求
 			d.lock.Lock()
+
+			log := ""
 			alarm := map[string]models.DeviceAlarm{}
 			for k, v := range d.alarmCaches {
 				alarm[k] = v
+				log += fmt.Sprintf("【%s】%s, %s, %v\n", k, v.Id, v.Name, v.Alarms)
 			}
 			d.lock.Unlock()
 
@@ -299,7 +342,7 @@ func (d *Device) upLoop() {
 	}
 }
 
-func (d *Device) joinModules(oldModulesStr string, newModules []models.ModuleInfo) []models.ModuleInfo {
+func (d *Device) joinModules(oldModulesStr string, newModules []models.ModuleInfo) (string, []models.ModuleInfo) {
 	finalModules := make([]models.ModuleInfo, 0)
 	if oldModulesStr != "" {
 		_ = json.Unmarshal([]byte(oldModulesStr), &finalModules)
@@ -318,5 +361,10 @@ func (d *Device) joinModules(oldModulesStr string, newModules []models.ModuleInf
 			finalModules = append(finalModules, nm)
 		}
 	}
-	return finalModules
+	saveModules := make([]map[string]string, 0)
+	for _, m := range finalModules {
+		saveModules = append(saveModules, map[string]string{"Name": m.Name, "Desc": m.Desc, "Version": m.Version})
+	}
+	js, _ := json.Marshal(saveModules)
+	return string(js), finalModules
 }
