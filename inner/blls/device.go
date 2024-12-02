@@ -207,6 +207,10 @@ func (d *Device) GetDeviceAlarm() ([]models.DeviceAlarm, error) {
 	defer d.lock.Unlock()
 	list := []models.DeviceAlarm{}
 	for _, v := range d.alarmCaches {
+		url := v.RouteUrl
+		url = strings.Replace(url, "root/root", "root", -1)
+		url = strings.Replace(url, "root//root", "root", -1)
+		v.RouteUrl = url
 		list = append(list, v)
 	}
 	return list, nil
