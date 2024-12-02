@@ -22,88 +22,66 @@ var (
 	service *qservice.MicroService
 
 	// 其他业务
-	deviceBll *blls.Device
-	routeBll  *blls.Route
+	routeBll *blls.Route
 )
 
 // 初始化
 func onInit(moduleName string) {
 	// 数据库初始化
-	if config.Config.Mode == config.ERouteServer {
+	if service.Setting().Mode == qservice.EModeServer {
 		// 添加设备登记数据库
 		daos.Init(moduleName)
 	}
 
 	// 业务初始化
-	routeBll = blls.NewRouteBll(moduleName)
-	routeBll.DownRequestFunc = service.SendRequest
-	routeBll.ResetClientFunc = service.ResetClient
-	deviceBll = blls.NewDeviceBll()
-	deviceBll.UpKnockDoorFunc = routeBll.KnockDoor
-	deviceBll.UpSendHeartFunc = routeBll.SendHeart
-	deviceBll.SendRequest = service.SendRequest
-
-	// 启动
+	routeBll = blls.NewRouteBll(service.Adapter())
 	routeBll.Start()
-	deviceBll.Start(routeBll.GetDevId(), routeBll.GetParentDev())
 
 	// 输出信息
-	fmt.Printf("[DeviceKnock]:%s^%s\n", routeBll.GetDevId(), routeBll.GetDevName())
+	fmt.Printf("[DeviceKnock]:%s^%s\n", config.DeviceId(), config.DeviceName())
 }
 
 // 处理外部请求
 func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	switch route {
-	//-------------------------------------------
-	//  以下是服务级路由模块，提供给所有功能模块使用的方法
 
+	//-------------------------------------------
+	//  以下由基于Qf框架的模块发送请求
+	case "KnockDoor": // 模块敲门
+		doors := qconvert.ToAny[map[string]models.DeviceKnock](ctx.Raw())
+		return routeBll.KnockDoor(doors)
 	case "Request": // 跨路由请求
 		model := qconvert.ToAny[models.RouteInfo](ctx.Raw())
-		return routeBll.Req(model)
-	case "NewDeviceId": // 下级路由请求生成一个新的设备ID
-		return deviceBll.NewDeviceId()
-	case "DiscoveryList": // 返回服务id和相关模块登记列表，用于客户端进行模块发现
-		devices := qconvert.ToAny[[]string](ctx.Raw())
-		return deviceBll.GetDiscoveryList(devices)
+		return routeBll.Request(model)
 
 	//-------------------------------------------
-	//  以下方法执行方有两类
-	//   1、同级模块给同级路由模块发送（客户端级的模块给同客户端级的路由模块发送，服务级模块给服务级路由发送）
-	//   2、服务级路由继续给上级路由模块发送
-
-	case "KnockDoor": // 模块敲门
-		info := qconvert.ToAny[models.DeviceKnock](ctx.Raw())
-		return deviceBll.KnockDoor(info)
-	case "Heart": // 模块心跳
-		id := ctx.GetString("id")
-		info := map[string]models.DeviceAlarm{}
-		ctx.GetStruct("Info", &info)
-		deviceBll.AddHeart(id, info)
+	//  以下仅由路由模块向上层路由模块发送请求
+	//    客户端路由 -》 服务端的根路由
+	//    服务端路由 -》 上级服务端的根路由
+	case "GetDeviceCache": // 请求服务器设备信息
+		return routeBll.GetDeviceCache()
+	case "NewDeviceId": // 申请一个新的Id
+		return routeBll.NewDeviceId()
+	case "Heart": // 发送心跳
+		alarm := qconvert.ToAny[struct {
+			Id   string
+			Info map[string]models.DeviceAlarm
+		}](ctx.Raw())
+		routeBll.AddHeart(alarm.Id, alarm.Info)
 		return true, nil
-	//case "ErrorLog": // 模块错误日志
-	//	devId := ctx.GetString("id")
-	//	module := ctx.GetString("module")
-	//	title := ctx.GetString("title")
-	//	err := ctx.GetString("error")
-	//	deviceBll.AddError(devId, module, title, err)
-	//	return true, nil
 
 	//-------------------------------------------
-	//  以下方法提供给前端管理页面访问
+	//  以下由前端管理页面发送请求
 	case "AlarmDeviceList": // 仅获取所有报警设备列表
-		return deviceBll.GetDeviceAlarm()
+		return routeBll.GetDeviceAlarm()
 	case "AllDeviceList": // 获取所有设备列表
-		return deviceBll.GetDeviceList()
+		return routeBll.GetDeviceList()
 	case "GetDeviceDetail": // 获取当前设备的详细信息
-		return deviceBll.GetDeviceDetail()
+		return routeBll.GetDeviceDetail()
 	case "Ping": // 反向ping测试
 		return fmt.Println("[Ping]:", "OK")
 	}
 	return nil, errors.New("route Not Matched")
-}
-
-func onLoadServDiscoveryList() string {
-	return routeBll.GetDiscoveryList()
 }
 
 // 处理外部通知

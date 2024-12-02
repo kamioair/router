@@ -4,26 +4,57 @@ import "sort"
 
 // DeviceKnock 设备敲门信息
 type DeviceKnock struct {
-	Id      string       // 设备码
-	Name    string       // 设备名称
-	Parent  string       // 父级名称
-	Modules []ModuleInfo // 包含的模块列表
+	Id      string           // 设备码
+	Name    string           // 设备名称
+	FullUrl string           // 完整路径
+	Modules ModuleCollection // 包含的模块列表
+}
+
+// DeviceInfo 完整设备信息
+type DeviceInfo struct {
+	DeviceKnock
+	Parent   string         // 父级名称
+	IsOnline bool           // 网络是否在线
+	Cpu      CpuMemState    // CPU
+	Memory   CpuMemState    // 内存
+	Disk     []DiskState    // 磁盘
+	Process  []ProcessState // 进程
+}
+
+// ModuleCollection 模块列表
+type ModuleCollection []ModuleInfo
+
+func (c *ModuleCollection) Add(list []ModuleInfo) {
+	for _, nm := range list {
+		exist := false
+		for i, om := range *c {
+			if om.Name == nm.Name {
+				(*c)[i].Desc = nm.Desc
+				(*c)[i].Version = nm.Version
+				exist = true
+				break
+			}
+		}
+		if exist == false {
+			(*c) = append((*c), nm)
+		}
+	}
 }
 
 // DeviceAlarm 设备报警信息
 type DeviceAlarm struct {
-	Id       string // 设备码
-	Name     string // 设备名称
-	Parent   string // 父级名称
-	RouteUrl string // 完整路由路径
-	Alarms   []Item // 包含的警报列表
+	Id      string // 设备码
+	Name    string // 设备名称
+	Parent  string // 父级名称
+	FullUrl string // 完整路由路径
+	Alarms  []Item // 包含的警报列表
 }
 
 func (da *DeviceAlarm) Set(name string, alarmWhere bool, alarmValue string, dev DeviceInfo) {
 	da.Id = dev.Id
 	da.Name = dev.Name
 	da.Parent = dev.Parent
-	da.RouteUrl = dev.RouteUrl
+	da.FullUrl = dev.FullUrl
 	if alarmWhere {
 		// 添加到列表
 		add := true
@@ -56,20 +87,6 @@ func (da *DeviceAlarm) Set(name string, alarmWhere bool, alarmValue string, dev 
 			da.Alarms = append(da.Alarms[:index], da.Alarms[index+1:]...)
 		}
 	}
-}
-
-// DeviceInfo 完整设备信息
-type DeviceInfo struct {
-	Id       string         // 设备码
-	Name     string         // 设备名称
-	Parent   string         // 父级名称
-	RouteUrl string         // 完整路由路径
-	Modules  []ModuleInfo   // 包含的模块列表
-	IsOnline bool           // 网络是否在线
-	Cpu      CpuMemState    // CPU
-	Memory   CpuMemState    // 内存
-	Disk     []DiskState    // 磁盘
-	Process  []ProcessState // 进程
 }
 
 // CpuMemState CPU和内存状态
@@ -110,11 +127,4 @@ type RouteInfo struct {
 	Module  string // 模块名称
 	Route   string // 方法名称
 	Content any    // 入参
-}
-
-type ServDiscovery struct {
-	Id        string            // 服务器Broker所在设备ID
-	ParentId  string            // 服务的上级设备ID
-	ParentUrl string            // 上级路径
-	Modules   map[string]string // 包含的服务器模块和请求设备的模块列表，key为模块名称，value为设备Id，用于请求设备查找请求模块所在的设备
 }

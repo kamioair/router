@@ -4,85 +4,96 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/kamioair/qf/qdefine"
-	"github.com/kamioair/qf/qservice"
+	"github.com/google/uuid"
 	"github.com/kamioair/qf/utils/qconvert"
 	easyCon "github.com/qiu-tec/easy-con.golang"
 	"router/inner/config"
 	"router/inner/models"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Route struct {
-	name            string
-	servDiscovery   models.ServDiscovery
-	upAdapter       easyCon.IAdapter
-	deviceInfo      qdefine.DeviceInfo
-	DownRequestFunc qdefine.SendRequestHandler
-	ResetClientFunc func(devCode string, isAddModuleSuffix bool)
+	upperAdapter easyCon.IAdapter // 上层Broker访问器
+	localAdapter easyCon.IAdapter // 自己Broker访问器
+	lock         *sync.Mutex
+	deviceBll    *device
 }
 
-func NewRouteBll(name string) *Route {
-	route := &Route{
-		name: name,
+func NewRouteBll(localAdapter easyCon.IAdapter) *Route {
+	r := &Route{
+		localAdapter: localAdapter,
 	}
-	return route
+	// 如果有上层配置，则连接
+	if config.UpMqtt.Addr != "" {
+		setting := easyCon.NewSetting(fmt.Sprintf("Route.%s", config.DeviceId()), config.UpMqtt.Addr, r.onReq, r.onStatus)
+		setting.UID = config.UpMqtt.UId
+		setting.PWD = config.UpMqtt.Pwd
+		setting.TimeOut = time.Duration(config.UpMqtt.TimeOut) * time.Second
+		setting.ReTry = config.UpMqtt.Retry
+		setting.LogMode = easyCon.ELogMode(config.UpMqtt.LogMode)
+		r.upperAdapter = easyCon.NewMqttAdapter(setting)
+		time.Sleep(time.Second)
+	}
+	// 其他初始化
+	r.deviceBll = newDeviceBll()
+	return r
 }
 
+// Start 启动
 func (r *Route) Start() {
-	// 获取本机设备信息
-	r.loadDeviceInfo()
-
-	// 如果配置了上级路由，则连接
-	r.initUpAdapter(r.deviceInfo.Id)
-
-	// 问上级要父级ID
-	if r.upAdapter != nil {
-		resp := r.upAdapter.Req(r.name, "DiscoveryList", []string{"local"})
+	if r.upperAdapter != nil {
+		// 服务路由，问上层路由要
+		resp := r.upperAdapter.Req("Route", "GetDeviceCache", nil)
 		if resp.RespCode == easyCon.ERespSuccess {
-			r.servDiscovery = qconvert.ToAny[models.ServDiscovery](resp.Content)
+			r.deviceBll.SetUpperDevice(qconvert.ToAny[models.DeviceKnock](resp.Content))
 		}
-	} else {
-		ctx, err := r.DownRequestFunc(r.name+".root", "DiscoveryList", []string{"local"})
-		if err == nil {
-			r.servDiscovery = qconvert.ToAny[models.ServDiscovery](ctx.Raw())
+	} else if config.Mode.IsClient() {
+		// 客户路由，问根路由要
+		resp := r.localAdapter.Req("Route", "GetDeviceCache", nil)
+		if resp.RespCode == easyCon.ERespSuccess {
+			r.deviceBll.SetUpperDevice(qconvert.ToAny[models.DeviceKnock](resp.Content))
 		}
 	}
+	// 启动设备
+	r.deviceBll.Start()
+	// 启动心跳
+	go r.heartLoop()
 }
 
-func (r *Route) GetDevId() string {
-	return r.deviceInfo.Id
-}
+// KnockDoor 敲门处理
+func (r *Route) KnockDoor(doors map[string]models.DeviceKnock) (map[string]string, error) {
+	// 添加到缓存
+	list := r.deviceBll.SetLocalDevice(doors)
 
-func (r *Route) GetParentDev() models.ServDiscovery {
-	return r.servDiscovery
-}
-
-func (r *Route) GetDevName() string {
-	return r.deviceInfo.Name
-}
-
-func (r *Route) KnockDoor(info models.DeviceKnock) {
-	if config.Config.Mode == config.ERouteClient {
-		if info.Parent == info.Id {
-			info.Parent = r.servDiscovery.Id
-		}
-		_, _ = r.DownRequestFunc(r.name+".root", "KnockDoor", info)
-	} else {
-		if r.upAdapter == nil {
-			return
-		}
-		// 如果是本机路由，则附加上级路由的ID
-		if info.Parent == info.Id {
-			info.Parent = r.servDiscovery.Id
-		}
-		_ = r.upAdapter.Req(r.name, "KnockDoor", info)
+	// 客户端路由向服务器根路由敲门
+	if config.Mode.IsClient() {
+		r.localAdapter.Req("Route", "KnockDoor", list)
+		// 返回上级的模块列表
+		return r.deviceBll.GetUpperModules(), nil
 	}
 
+	// 服务路由且配置了上级Broker，向上级路由敲门
+	if r.upperAdapter != nil {
+		go r.upperAdapter.Req("Route", "KnockDoor", list)
+	}
+	return map[string]string{}, nil
 }
 
-func (r *Route) Req(info models.RouteInfo) (any, error) {
+// NewDeviceId 给下级路由分配一个新的设备ID
+func (d *Route) NewDeviceId() (any, error) {
+	// 返回新的ID
+	return uuid.NewString(), nil
+}
+
+// GetDeviceCache 获取当前设备的信息
+func (r *Route) GetDeviceCache() (models.DeviceKnock, error) {
+	return r.deviceBll.GetDeviceCache()
+}
+
+// Request 执行路由请求
+func (r *Route) Request(info models.RouteInfo) (any, error) {
 	if info.Module == "" {
 		return nil, errors.New("moduleName is nil")
 	}
@@ -100,78 +111,20 @@ func (r *Route) Req(info models.RouteInfo) (any, error) {
 	return r.routeRequest(info)
 }
 
-func (r *Route) loadDeviceInfo() {
-	// 先从本地文件获取
-	device, err := qservice.DeviceCode.LoadFromFile()
-	if err == nil {
-		r.deviceInfo = device
-		return
-	}
-
-	isAddModuleSuffix := false
-
-	// 本地没有，则上上级路由请求
-	switch config.Config.Mode {
-	case config.ERouteServer:
-		if config.Config.UpMqtt.Addr == "" {
-			// 根级服务模式，固定ID
-			device = qdefine.DeviceInfo{
-				Id:   "root",
-				Name: "Root Server",
-			}
-		} else {
-			// 普通服务器模式
-			// 创建临时连接，并问上级路由模块请求
-			r.initUpAdapter(qdefine.NewUUID() + "[TEMP]")
-			ctx, err := r.upRequestFunc(r.name+".root", "NewDeviceId", nil)
-			if err != nil {
-				panic(err)
-			}
-			device = qdefine.DeviceInfo{
-				Id: ctx.(string),
-			}
-			// 得到客户端ID后，关闭临时连接
-			if r.upAdapter != nil {
-				r.upAdapter.Stop()
-				r.upAdapter = nil
-			}
-		}
-	case config.ERouteClient:
-		// 客户端模式，向服务端路由请求
-		ctx, err := r.DownRequestFunc(r.name+".root", "NewDeviceId", nil)
-		if err != nil {
-			panic(err)
-		}
-		device = qdefine.DeviceInfo{
-			Id: ctx.Raw().(string),
-		}
-		isAddModuleSuffix = true
-	}
-
-	// 保存文件
-	err = qservice.DeviceCode.SaveToFile(device)
-	if err != nil {
-		panic(err)
-	}
-
-	r.deviceInfo = device
-
-	// 使用新的客户端ID重启模块
-	r.ResetClientFunc(device.Id, isAddModuleSuffix)
+func (r *Route) AddHeart(id string, info map[string]models.DeviceAlarm) {
+	r.deviceBll.AddHeart(id, info)
 }
 
-func (r *Route) initUpAdapter(devId string) {
-	cfg := config.Config.UpMqtt
-	if cfg.Addr != "" {
-		setting := easyCon.NewSetting(fmt.Sprintf("Route.%s", devId), cfg.Addr, r.onReq, r.onStatusChanged)
-		setting.UID = cfg.UId
-		setting.PWD = cfg.Pwd
-		setting.TimeOut = time.Duration(cfg.TimeOut) * time.Second
-		setting.ReTry = cfg.Retry
-		setting.LogMode = easyCon.ELogMode(cfg.LogMode)
-		r.upAdapter = easyCon.NewMqttAdapter(setting)
-		time.Sleep(time.Second * 1)
-	}
+func (r *Route) GetDeviceAlarm() (any, error) {
+	return r.deviceBll.GetDeviceAlarm()
+}
+
+func (r *Route) GetDeviceList() (any, error) {
+	return r.deviceBll.GetDeviceList()
+}
+
+func (r *Route) GetDeviceDetail() (any, error) {
+	return r.deviceBll.GetDeviceDetail()
 }
 
 func (r *Route) onReq(pack easyCon.PackReq) (easyCon.EResp, any) {
@@ -180,7 +133,7 @@ func (r *Route) onReq(pack easyCon.PackReq) (easyCon.EResp, any) {
 		info := models.RouteInfo{}
 		js, _ := json.Marshal(pack.Content)
 		_ = json.Unmarshal(js, &info)
-		rs, err := r.Req(info)
+		rs, err := r.Request(info)
 		if err != nil {
 			return easyCon.ERespError, err.Error()
 		}
@@ -189,14 +142,9 @@ func (r *Route) onReq(pack easyCon.PackReq) (easyCon.EResp, any) {
 	return easyCon.ERespRouteNotFind, "Route Not Matched"
 }
 
-func (r *Route) onStatusChanged(adapter easyCon.IAdapter, status easyCon.EStatus) {
-
-}
-
 func (r *Route) upRequestFunc(module, route string, content any) (any, error) {
-	if r.upAdapter != nil {
-		module = strings.Replace(module, ".root", "", -1)
-		resp := r.upAdapter.Req(module, route, content)
+	if r.upperAdapter != nil {
+		resp := r.upperAdapter.Req(module, route, content)
 		if resp.RespCode == easyCon.ERespSuccess {
 			return resp.Content, nil
 		}
@@ -205,11 +153,14 @@ func (r *Route) upRequestFunc(module, route string, content any) (any, error) {
 		}
 		return nil, errors.New(fmt.Sprintf("%d", resp.RespCode))
 	}
-	ctx, err := r.DownRequestFunc(module, route, content)
-	if err != nil {
-		return nil, err
+	resp := r.localAdapter.Req(module, route, content)
+	if resp.RespCode == easyCon.ERespSuccess {
+		return resp.Content, nil
 	}
-	return ctx.Raw(), nil
+	if resp.Error != "" {
+		return nil, errors.New(resp.Error)
+	}
+	return nil, errors.New(fmt.Sprintf("%d", resp.RespCode))
 }
 
 func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
@@ -221,7 +172,7 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 	// 拆分路由
 	sp := strings.Split(info.Module, "/")
 
-	devCode := r.deviceInfo.Id
+	devCode := config.DeviceId()
 
 	// 如果是当前设备或者是根
 	if sp[0] == devCode || devCode == "root" || devCode == "" {
@@ -237,31 +188,36 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 		if strings.Contains(newModule, "/") == false {
 			// 如果是客户端，则补上ID，反之去掉
 			if newModule == "Route" {
-				if config.Config.Mode == config.ERouteClient {
+				if config.Mode.IsClient() {
 					newModule = fmt.Sprintf("%s.%s", newModule, devCode)
 				}
 			} else {
 				newModule = fmt.Sprintf("%s.%s", newModule, devCode)
 			}
-			fmt.Println("【RouteRequest】", newModule, info.Route)
-			rs, err := r.DownRequestFunc(newModule, info.Route, info.Content)
-			if err != nil {
-				return nil, err
+			resp := r.localAdapter.Req(newModule, info.Route, info.Content)
+			if resp.RespCode == easyCon.ERespSuccess {
+				return resp.Content, nil
 			}
-			return rs.Raw(), nil
+			if resp.Error != "" {
+				return nil, errors.New(resp.Error)
+			}
+			return nil, errors.New(fmt.Sprintf("%d", resp.RespCode))
 		}
 		// 未到底层，继续向下级路由请求
 		newParams["Module"] = newModule
 		// 截取下级设备码
 		sp = strings.Split(newModule, "/")
-		rs, err := r.DownRequestFunc(fmt.Sprintf("Route.%s", sp[0]), "Request", newParams)
-		if err != nil {
-			return nil, err
+		resp := r.localAdapter.Req(fmt.Sprintf("Route.%s", sp[0]), "Request", newParams)
+		if resp.RespCode == easyCon.ERespSuccess {
+			return resp.Content, nil
 		}
-		return rs.Raw(), nil
+		if resp.Error != "" {
+			return nil, errors.New(resp.Error)
+		}
+		return nil, errors.New(fmt.Sprintf("%d", resp.RespCode))
 	} else {
 		// 向上机路由请求
-		rs, err := r.upRequestFunc(r.name, "Request", newParams)
+		rs, err := r.upRequestFunc("Route", "Request", newParams)
 		if err != nil {
 			return nil, err
 		}
@@ -269,22 +225,29 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 	}
 }
 
-func (r *Route) SendHeart(info map[string]models.DeviceAlarm) {
-	params := map[string]any{
-		"Id":   r.deviceInfo.Id,
-		"Info": info,
-	}
-	switch config.Config.Mode {
-	case config.ERouteClient:
-		r.DownRequestFunc(r.name+".root", "Heart", params)
-	case config.ERouteServer:
-		if r.upAdapter != nil {
-			r.upAdapter.Req(r.name, "Heart", params)
+func (r *Route) heartLoop() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// 向上级路由模块发送请求
+			alarms := map[string]any{
+				"Id":   config.DeviceId(),
+				"Info": r.deviceBll.GetAlarmCaches(),
+			}
+			if config.Mode.IsClient() {
+				go r.localAdapter.Req("Route", "Heart", alarms)
+			} else {
+				if r.upperAdapter != nil {
+					go r.upperAdapter.Req("Route", "Heart", alarms)
+				}
+			}
 		}
 	}
 }
 
-func (r *Route) GetDiscoveryList() string {
-	str, _ := json.Marshal(r.servDiscovery)
-	return string(str)
+func (r *Route) onStatus(adapter easyCon.IAdapter, status easyCon.EStatus) {
+
 }

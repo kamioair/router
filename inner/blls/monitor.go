@@ -3,6 +3,7 @@ package blls
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/kamioair/qf/qservice"
 	"github.com/robfig/cron/v3"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
@@ -16,6 +17,7 @@ import (
 )
 
 type monitor struct {
+	mode             qservice.EServerMode
 	crn              *cron.Cron
 	cpuAlarm         time.Time
 	memAlarm         time.Time
@@ -142,7 +144,7 @@ func (m *monitor) checkDisk() {
 		if err != nil {
 			continue
 		}
-		if config.Config.Mode == config.ERouteServer && config.Monitor.DiskPaths == nil {
+		if config.Mode.IsServer() && config.Monitor.DiskPaths == nil {
 			if usage.UsedPercent >= config.Monitor.DiskAlarm {
 				alarms = append(alarms, models.DiskState{
 					Name:  partition.Mountpoint,
@@ -156,7 +158,7 @@ func (m *monitor) checkDisk() {
 					IsOk:  true,
 				})
 			}
-		} else if config.Config.Mode == config.ERouteClient && config.Monitor.DiskPaths == nil {
+		} else if config.Mode.IsClient() && config.Monitor.DiskPaths == nil {
 			if partition.Mountpoint == "C:" {
 				if usage.UsedPercent >= config.Monitor.DiskAlarm {
 					alarms = append(alarms, models.DiskState{
