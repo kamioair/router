@@ -12,13 +12,16 @@ type DeviceKnock struct {
 
 // DeviceInfo 完整设备信息
 type DeviceInfo struct {
-	DeviceKnock
-	Parent   string         // 父级名称
-	IsOnline bool           // 网络是否在线
-	Cpu      CpuMemState    // CPU
-	Memory   CpuMemState    // 内存
-	Disk     []DiskState    // 磁盘
-	Process  []ProcessState // 进程
+	Id       string           // 设备码
+	Name     string           // 设备名称
+	FullUrl  string           // 完整路径
+	Parent   string           // 父级名称
+	IsOnline bool             // 网络是否在线
+	Cpu      CpuMemState      // CPU
+	Memory   CpuMemState      // 内存
+	Disk     []DiskState      // 磁盘
+	Process  []ProcessState   // 进程
+	Modules  ModuleCollection // 包含的模块列表
 }
 
 // ModuleCollection 模块列表

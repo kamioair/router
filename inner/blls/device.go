@@ -1,6 +1,7 @@
 package blls
 
 import (
+	"encoding/json"
 	"router/inner/config"
 	"router/inner/daos"
 	"router/inner/models"
@@ -85,7 +86,14 @@ func (r *device) GetDeviceCache() (models.DeviceKnock, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	return r.localDevices[config.DeviceId()].DeviceKnock, nil
+	ld := r.localDevices[config.DeviceId()]
+	knock := models.DeviceKnock{
+		Id:      ld.Id,
+		Name:    ld.Name,
+		FullUrl: ld.FullUrl,
+		Modules: ld.Modules,
+	}
+	return knock, nil
 }
 
 func (d *device) SetLocalDevice(infos map[string]models.DeviceKnock) map[string]models.DeviceKnock {
@@ -110,7 +118,12 @@ func (d *device) SetLocalDevice(infos map[string]models.DeviceKnock) map[string]
 
 	knocks := map[string]models.DeviceKnock{}
 	for k, v := range d.localDevices {
-		knocks[k] = v.DeviceKnock
+		knocks[k] = models.DeviceKnock{
+			Id:      v.Id,
+			Name:    v.Name,
+			FullUrl: v.FullUrl,
+			Modules: v.Modules,
+		}
 	}
 
 	// 写入到数据库
@@ -206,10 +219,7 @@ func (d *device) GetDeviceAlarm() (any, error) {
 		list = append(list, v)
 	}
 	sort.Slice(list, func(i, j int) bool {
-		if list[i].Parent == list[j].Parent {
-			return list[i].Id < list[j].Id
-		}
-		return list[i].Parent < list[j].Parent
+		return list[i].FullUrl < list[j].FullUrl
 	})
 	return list, nil
 }
@@ -221,10 +231,10 @@ func (d *device) GetDeviceList() (any, error) {
 	list := make([]map[string]any, 0)
 	for _, v := range d.localDevices {
 		list = append(list, map[string]any{
-			"Id":       v.Id,
-			"Name":     v.Name,
-			"Parent":   v.Parent,
-			"RouteUrl": v.FullUrl,
+			"Id":      v.Id,
+			"Name":    v.Name,
+			"Parent":  v.Parent,
+			"FullUrl": v.FullUrl,
 		})
 	}
 	return list, nil
@@ -234,5 +244,6 @@ func (d *device) GetDeviceDetail() (any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	return d.localDevices[config.DeviceId()], nil
+	str, _ := json.Marshal(d.localDevices[config.DeviceId()])
+	return string(str), nil
 }
