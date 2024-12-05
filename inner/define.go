@@ -10,6 +10,7 @@ import (
 	"router/inner/config"
 	"router/inner/daos"
 	"router/inner/models"
+	"time"
 )
 
 const (
@@ -22,7 +23,8 @@ var (
 	service *qservice.MicroService
 
 	// 其他业务
-	routeBll *blls.Route
+	routeBll   *blls.Route
+	initFinish bool
 )
 
 // 初始化
@@ -39,6 +41,7 @@ func onInit(moduleName string) {
 
 	// 输出信息
 	fmt.Printf("[DeviceKnock]:%s^%s\n", config.DeviceId(), config.DeviceName())
+	initFinish = true
 }
 
 // 处理外部请求
@@ -53,6 +56,10 @@ func onReqHandler(route string, ctx qdefine.Context) (any, error) {
 	case "Request": // 跨路由请求
 		model := qconvert.ToAny[models.RouteInfo](ctx.Raw())
 		return routeBll.Request(model)
+	case "CustomAlarm": // 模块的自定义警报
+		alarmType := ctx.GetString("type")
+		alarmValue := ctx.GetString("value")
+		return routeBll.AddAlarm(alarmType, alarmValue)
 
 	//-------------------------------------------
 	//  以下仅由路由模块向上层路由模块发送请求
@@ -92,9 +99,20 @@ func onNoticeHandler(route string, ctx qdefine.Context) {
 }
 
 func onStatusHandler(route string, ctx qdefine.Context) {
-	//if route == "StatusInputRetain" {
-	//	ctx.
-	//}
+	switch route {
+
+	}
+}
+
+func onCommStateHandler(state qdefine.ECommState) {
+	if state == qdefine.ECommStateLinked {
+		if initFinish {
+			go func() {
+				time.Sleep(time.Second * 5)
+				routeBll.ReKnockDoor()
+			}()
+		}
+	}
 }
 
 // 发送通知

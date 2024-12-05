@@ -81,15 +81,36 @@ func (r *Route) KnockDoor(doors map[string]models.DeviceKnock) (map[string]strin
 	return map[string]string{}, nil
 }
 
+// ReKnockDoor 重新敲门
+func (r *Route) ReKnockDoor() {
+	list := r.deviceBll.GetAllDeviceCache()
+
+	// 客户端路由向服务器根路由敲门
+	if config.Mode.IsClient() {
+		r.localAdapter.Req("Route", "KnockDoor", list)
+	}
+
+	// 服务路由且配置了上级Broker，向上级路由敲门
+	if r.upperAdapter != nil {
+		go r.upperAdapter.Req("Route", "KnockDoor", list)
+	}
+}
+
 // NewDeviceId 给下级路由分配一个新的设备ID
 func (d *Route) NewDeviceId() (any, error) {
 	// 返回新的ID
 	return uuid.NewString(), nil
 }
 
+// AddAlarm 写入警报
+func (r *Route) AddAlarm(alarmType string, value string) (any, error) {
+	r.deviceBll.SetAlarm(alarmType, value)
+	return true, nil
+}
+
 // GetDeviceCache 获取当前设备的信息
 func (r *Route) GetDeviceCache() (models.DeviceKnock, error) {
-	return r.deviceBll.GetDeviceCache()
+	return r.deviceBll.GetLocalDeviceCache()
 }
 
 // Request 执行路由请求
@@ -226,7 +247,7 @@ func (r *Route) routeRequest(info models.RouteInfo) (any, error) {
 }
 
 func (r *Route) heartLoop() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {

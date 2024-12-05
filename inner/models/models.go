@@ -86,7 +86,7 @@ func (da *DeviceAlarm) Set(name string, alarmWhere bool, alarmValue string, dev 
 				break
 			}
 		}
-		if index > 0 {
+		if index >= 0 {
 			da.Alarms = append(da.Alarms[:index], da.Alarms[index+1:]...)
 		}
 	}
@@ -122,7 +122,7 @@ type ModuleInfo struct {
 	Name    string // 模块名称
 	Desc    string // 模块描述
 	Version string // 模块版本
-	Errors  []Item // 包含的故障列表
+	Error   string // 详细错误信息（从文件中读取）
 }
 
 // RouteInfo 路由信息

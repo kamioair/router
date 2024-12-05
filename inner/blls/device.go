@@ -82,7 +82,7 @@ func (d *device) SetUpperDevice(info models.DeviceKnock) {
 	d.upperDevice = info
 }
 
-func (r *device) GetDeviceCache() (models.DeviceKnock, error) {
+func (r *device) GetLocalDeviceCache() (models.DeviceKnock, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -94,6 +94,22 @@ func (r *device) GetDeviceCache() (models.DeviceKnock, error) {
 		Modules: ld.Modules,
 	}
 	return knock, nil
+}
+
+func (d *device) GetAllDeviceCache() map[string]models.DeviceKnock {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	knocks := map[string]models.DeviceKnock{}
+	for k, v := range d.localDevices {
+		knocks[k] = models.DeviceKnock{
+			Id:      v.Id,
+			Name:    v.Name,
+			FullUrl: v.FullUrl,
+			Modules: v.Modules,
+		}
+	}
+	return knocks
 }
 
 func (d *device) SetLocalDevice(infos map[string]models.DeviceKnock) map[string]models.DeviceKnock {
@@ -127,11 +143,29 @@ func (d *device) SetLocalDevice(infos map[string]models.DeviceKnock) map[string]
 	}
 
 	// 写入到数据库
-	if daos.DeviceDao == nil {
-		return knocks
+	if daos.DeviceDao != nil {
+
 	}
 
 	return knocks
+}
+
+func (d *device) SetAlarm(alarmType string, value string) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	localId := config.DeviceId()
+
+	dev := d.localDevices[localId]
+	alarm := d.alarmCaches[localId]
+	alarm.Id = dev.Id
+	alarm.Name = dev.Name
+	alarm.Parent = dev.Parent
+	alarm.FullUrl = dev.FullUrl
+
+	alarm.Set(alarmType, value != "", value, dev)
+
+	d.alarmCaches[localId] = alarm
 }
 
 func (d *device) GetAlarmCaches() map[string]models.DeviceAlarm {
@@ -244,6 +278,12 @@ func (d *device) GetDeviceDetail() (any, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	str, _ := json.Marshal(d.localDevices[config.DeviceId()])
+	dev := d.localDevices[config.DeviceId()]
+	// 查找详细错误日志
+	for _, m := range dev.Modules {
+
+		m.Error = ""
+	}
+	str, _ := json.Marshal(dev)
 	return string(str), nil
 }
