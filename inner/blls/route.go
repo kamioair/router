@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/kamioair/qf/qdefine"
 	"github.com/kamioair/qf/utils/qconvert"
 	easyCon "github.com/qiu-tec/easy-con.golang"
 	"router/inner/config"
@@ -19,11 +20,13 @@ type Route struct {
 	localAdapter easyCon.IAdapter // 自己Broker访问器
 	lock         *sync.Mutex
 	deviceBll    *device
+	onNotice     func(route string, content any)
 }
 
-func NewRouteBll(localAdapter easyCon.IAdapter) *Route {
+func NewRouteBll(localAdapter easyCon.IAdapter, onNotice func(route string, content any)) *Route {
 	r := &Route{
 		localAdapter: localAdapter,
+		onNotice:     onNotice,
 	}
 	// 如果有上层配置，则连接
 	if config.UpMqtt.Addr != "" {
@@ -133,7 +136,10 @@ func (r *Route) Request(info models.RouteInfo) (any, error) {
 }
 
 func (r *Route) AddHeart(id string, info map[string]models.DeviceAlarm) {
-	r.deviceBll.AddHeart(id, info)
+	isChanged := r.deviceBll.AddHeart(id, info)
+	if isChanged {
+		r.onNotice("RouteDeviceAlarm", qdefine.NewDateTime(time.Now()))
+	}
 }
 
 func (r *Route) GetDeviceAlarm() (any, error) {

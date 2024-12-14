@@ -36,7 +36,7 @@ func onInit(moduleName string) {
 	}
 
 	// 业务初始化
-	routeBll = blls.NewRouteBll(service.Adapter())
+	routeBll = blls.NewRouteBll(service.Adapter(), onNotice)
 	routeBll.Start()
 
 	// 输出信息

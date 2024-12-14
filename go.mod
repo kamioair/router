@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/google/uuid v1.4.0
 	github.com/kamioair/qf v0.0.7
-	github.com/qiu-tec/easy-con.golang v0.0.8
+	github.com/qiu-tec/easy-con.golang v0.0.9
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shirou/gopsutil/v4 v4.24.10
 )

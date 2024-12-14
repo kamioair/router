@@ -10,7 +10,6 @@ func main() {
 		BindInitFunc(onInit).
 		BindReqFunc(onReqHandler).
 		BindNoticeFunc(onNoticeHandler).
-		BindStatusFunc(onStatusHandler).
 		BindCommStateFunc(onCommStateHandler)
 
 	// 配置初始化

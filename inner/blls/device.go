@@ -47,11 +47,13 @@ func (d *device) Start() {
 }
 
 // AddHeart 添加下级路由发送的心跳和报警信息
-func (d *device) AddHeart(devId string, routeHearts map[string]models.DeviceAlarm) {
+func (d *device) AddHeart(devId string, routeHearts map[string]models.DeviceAlarm) bool {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
 	d.monitorBll.AddHeart(devId)
+
+	oldStr, _ := json.Marshal(d.alarmCaches)
 	for k, v := range routeHearts {
 		a := d.alarmCaches[k]
 		a.Id = v.Id
@@ -61,6 +63,11 @@ func (d *device) AddHeart(devId string, routeHearts map[string]models.DeviceAlar
 		a.Alarms = v.Alarms
 		d.alarmCaches[k] = a
 	}
+	newStr, _ := json.Marshal(d.alarmCaches)
+	if string(oldStr) != string(newStr) {
+		return true
+	}
+	return false
 }
 
 func (d *device) GetUpperModules() map[string]string {
@@ -250,6 +257,9 @@ func (d *device) GetDeviceAlarm() (any, error) {
 
 	list := make([]models.DeviceAlarm, 0)
 	for _, v := range d.alarmCaches {
+		if len(v.Alarms) == 0 {
+			continue
+		}
 		list = append(list, v)
 	}
 	sort.Slice(list, func(i, j int) bool {
